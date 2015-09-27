@@ -51,7 +51,8 @@ def _get_cmd_options():
                               metavar='[DC][cmst][cmst]',
                               help='Renaming mode. 1st letter specifies the usage of clean (C) or dirty (D) hashes. '
                                    '2nd and 3rd letter specify the source and destination format: crc32 (c), md5 (m), '
-                                   'sha1 (s), and title (t).')
+                                   'sha1 (s), and title (t). i.e. "Dct" will use dirty hashes to copy files from crc32 '
+                                   'naming scheme to real title scheme.')
     o_arg_parser.add_argument('dat',
                               action='store',
                               help='Source dat file. i.e. "/home/john/snes.dat"')
