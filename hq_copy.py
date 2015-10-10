@@ -3,30 +3,25 @@
 
 import argparse
 import os
+import re
 import shutil
 import sys
 
 from hqlib import romdats
 import libs
-#from libs import cons
-#from libs import files
-#from libs import strings
-#from libs import
+
 
 # CONSTANTS
 #=======================================================================================================================
-du_FORMATS = {'c': 'crc32', 'm': 'md5', 's': 'sha1', 't': 'title'}
+du_FORMATS = {'c': 'crc32', 'm': 'md5', 's': 'sha1', 't': 'hq_title'}
 u_PROG_NAME = u'HQ COPY'
-u_PROG_VER = u'v2015.09.26'
-u_OK_TEXT = u'✔'
-u_ER_TEXT = u'x'
+u_PROG_VER = u'v2015.09.27'
 
 lu_valid_modes = []
 for u_1st_char in ('C', 'D'):
     for u_2nd_char in du_FORMATS.keys():
         for u_3rd_char in du_FORMATS.keys():
-            if u_2nd_char != u_3rd_char:
-                lu_valid_modes.append('%s%s%s' % (u_1st_char, u_2nd_char, u_3rd_char))
+            lu_valid_modes.append('%s%s%s' % (u_1st_char, u_2nd_char, u_3rd_char))
 
 tu_valid_modes = tuple(lu_valid_modes)
 
@@ -51,8 +46,8 @@ def _get_cmd_options():
                               metavar='[DC][cmst][cmst]',
                               help='Renaming mode. 1st letter specifies the usage of clean (C) or dirty (D) hashes. '
                                    '2nd and 3rd letter specify the source and destination format: crc32 (c), md5 (m), '
-                                   'sha1 (s), and title (t). i.e. "Dct" will use dirty hashes to copy files from crc32 '
-                                   'naming scheme to real title scheme.')
+                                   'sha1 (s), and hq_title (t). i.e. "Dct" will use dirty hashes to copy files from '
+                                   'crc32 naming scheme to real hq_title scheme.')
     o_arg_parser.add_argument('dat',
                               action='store',
                               help='Source dat file. i.e. "/home/john/snes.dat"')
@@ -62,6 +57,11 @@ def _get_cmd_options():
     o_arg_parser.add_argument('destination',
                               action='store',
                               help='Destination directory. i.e. "/home/cecil/output_pics"')
+    o_arg_parser.add_argument('-r',
+                              action='store',
+                              help='Regex pattern and group. i.e. "(.*),0". Everything BEFORE the comma is the '
+                                   'pattern and everything AFTER the comma is the group to capture.')
+
 
     # Parsing and validation of the parameters
     i_errors = 0
@@ -72,7 +72,7 @@ def _get_cmd_options():
     # Validating simulation mode
     b_simulation = o_args.s
     if b_simulation:
-        u_text_output += '   SIM: %s simulation is ON, files won\'t be copied\n' % u_OK_TEXT
+        u_text_output += '   SIM: %s simulation is ON, files won\'t be copied\n' % libs.cons.u_OK_TEXT
 
     # Validating rename mode
     if o_args.mode[0] == 'C':
@@ -98,7 +98,7 @@ def _get_cmd_options():
         else:
             u_extra_dst_mode = u'dirty '
 
-    u_text_output += u'  MODE: %s %s%s -> %s%s\n' % (u_OK_TEXT,
+    u_text_output += u'  MODE: %s %s%s -> %s%s\n' % (libs.cons.u_OK_TEXT,
                                                      u_extra_src_mode,
                                                      du_FORMATS[u_src_format],
                                                      u_extra_dst_mode,
@@ -107,9 +107,9 @@ def _get_cmd_options():
     # Validating dat file
     u_dat_file = o_args.dat.decode('utf8')
     if os.path.isfile(u_dat_file):
-        u_dat_found = u_OK_TEXT
+        u_dat_found = libs.cons.u_OK_TEXT
     else:
-        u_dat_found = u_ER_TEXT
+        u_dat_found = libs.cons.u_ER_TEXT
         i_errors += 1
 
     u_text_output += u'   DAT: %s %s\n' % (u_dat_found, u_dat_file)
@@ -117,9 +117,9 @@ def _get_cmd_options():
     # Validating source path
     u_src_path = o_args.source.decode('utf8')
     if os.path.exists(u_src_path):
-        u_src_found = u_OK_TEXT
+        u_src_found = libs.cons.u_OK_TEXT
     else:
-        u_src_found = u_ER_TEXT
+        u_src_found = libs.cons.u_ER_TEXT
         i_errors += 1
 
     u_text_output += u'   SRC: %s %s\n' % (u_src_found, u_src_path)
@@ -127,12 +127,31 @@ def _get_cmd_options():
     # Validating destination path
     u_dst_path = o_args.destination.decode('utf8')
     if os.path.isdir(u_dst_path):
-        u_dst_found = u_OK_TEXT
+        u_dst_found = libs.cons.u_OK_TEXT
     else:
-        u_dst_found = u_ER_TEXT
+        u_dst_found = libs.cons.u_ER_TEXT
         i_errors += 1
 
     u_text_output += u'   DST: %s %s\n' % (u_dst_found, u_dst_path)
+
+    # Validating regex mode
+    u_regex_data = o_args.r
+
+    u_regex = None
+    i_regex_group = None
+    if u_regex_data:
+        u_regex_data = u_regex_data.decode('utf8')
+
+        try:
+            u_regex = u_regex_data.rpartition(u',')[0]
+            i_regex_group = int(u_regex_data.rpartition(u',')[2])
+            u_text_output += u'  REXP: %s #%i in "%s"\n' % (libs.cons.u_OK_TEXT, i_regex_group, u_regex)
+
+        except (ValueError, IndexError) as o_exception:
+            u_text_output += u'  REXP: %s Wrong regular expression data "%s"\n' % (libs.cons.u_ER_TEXT, u_regex_data)
+            i_errors += 1
+
+
 
     if i_errors:
         u_text_output += u'\n%i errors found. Please, fix them and run the program again.' % i_errors
@@ -148,20 +167,44 @@ def _get_cmd_options():
             'u_src_path': u_src_path,
             'u_dst_path': u_dst_path,
             'u_src_format': u_src_format,
-            'u_dst_format': u_dst_format}
+            'u_dst_format': u_dst_format,
+            'u_regex_pattern': u_regex,
+            'i_regex_group': i_regex_group}
+
+
+def _regex_catcher(u_text, u_pattern=None, i_group=None):
+    """
+    Function to capture a text inside a longer string using regex pattern.
+
+    :param u_text: Text where we are looking for patterns. i.e. 'I have a dog and a cat'
+    :param u_pattern: Regex pattern to search. i.e. '(d.g) (and)'
+    :param i_group: Group to catch. i.e. 1
+
+    :return: The captured text. In the above example it would be 1st group, so the output would be 'dog'
+    """
+
+    o_pattern = re.compile(u_pattern)
+    o_match = o_pattern.match(u_text)
+
+    if o_match is None:
+        u_output = None
+    else:
+        u_output = o_match.group(i_group)
+
+    return u_output
 
 
 # MAIN FUNCTION
 #=======================================================================================================================
 def rename(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_clean_hash=False, b_sim=False,
-           b_print=False):
+           b_print=False, u_regex_pattern=None, i_regex_group=None):
     """
-    Renaming function for files and directories. Valid formats are crc32, md5, sha1 and real title.
+    Renaming function for files and directories. Valid formats are crc32, md5, sha1 and real hq_title.
 
     Function to rename a file (or the files contained in a directory) from a naming scheme to another one. In HQ_TOOLS,
     the valid naming schemes for files are:
 
-        - 'title': The file has the same name than the ROM it belongs to. i.e. 'Super Mario World (Eur).jpg'.
+        - 'hq_title': The file has the same name than the ROM it belongs to. i.e. 'Super Mario World (Eur).jpg'.
 
         - 'crc32': The file is named like the CRC32 hash of the ROM it belongs to. i.e. 'ab46b0f1.png'.
 
@@ -181,6 +224,11 @@ def rename(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_
                          when comparing file names or, instead, full dirty hashes should be used instead (default).
 
     :param b_sim: Simulation mode. If True, files won't be actually copied.
+
+    :param u_regex_pattern: Regex pattern to allow the renaming of files that contain the expected name (crc32, md5...)
+                            PLUS extra information. i.e. "012345687 - foo.gif".
+
+    :param i_regex_group: Number of the group to catch
 
     :return: Statistics about the renaming process.
     """
@@ -230,7 +278,16 @@ def rename(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_
 
     # Processing of the files
     for o_src_file_object in lo_files_to_process:
-        o_game = o_dat.get_game_by_field(du_FORMATS[u_src_fmt], o_src_file_object.u_name, b_clean_hash)
+
+        # If the regex mode is not active, the full name of the file is used to find a game in the database. But with
+        # regex matching, just part of the filename is used.
+        if None in (u_regex_pattern, i_regex_group):
+            u_caught_name = o_src_file_object.u_name
+        else:
+            u_caught_name = _regex_catcher(o_src_file_object.u_name, u_regex_pattern, i_regex_group)
+
+        o_game = o_dat.get_game_by_field(du_FORMATS[u_src_fmt], u_caught_name, b_clean_hash)
+
         if o_game:
             i_files_recognized += 1
 
@@ -248,11 +305,11 @@ def rename(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_
                 u_copy_text = 's'
             else:
                 shutil.copy(o_src_file_object.u_path, o_dst_file_object.u_path)
-                u_copy_text = u_OK_TEXT
+                u_copy_text = libs.cons.u_OK_TEXT
 
         else:
             u_dst_file_name = '-- UNKNOWN --'
-            u_copy_text = u_ER_TEXT
+            u_copy_text = libs.cons.u_ER_TEXT
 
         # Add extra indication of clean or dirty hash
         u_extra_src = ''
@@ -293,17 +350,16 @@ def rename(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_
 # EXECUTION AS NORMAL PROGRAM
 #=======================================================================================================================
 if __name__ == '__main__':
-    u_heading_raw = '%s - %s (%s)' % (libs.cons.u_SET_NAME, u_PROG_NAME, u_PROG_VER)
-    u_heading_baked = libs.strings.title(u_heading_raw)
-    print u_heading_baked
+    print libs.strings.hq_title(u_PROG_NAME, u_PROG_VER)
 
     dx_args = _get_cmd_options()
-
     dx_rename_output = rename(u_dat=dx_args['u_dat_file'],
                               u_src_path=dx_args['u_src_path'], u_dst_dir=dx_args['u_dst_path'],
                               u_src_fmt=dx_args['u_src_format'], u_dst_fmt=dx_args['u_dst_format'],
                               b_clean_hash=dx_args['b_clean_hash'],
                               b_sim=dx_args['b_simulation'],
+                              u_regex_pattern=dx_args['u_regex_pattern'],
+                              i_regex_group=dx_args['i_regex_group'],
                               b_print=True)
 
     # Some basic stats are printed to screen
@@ -321,5 +377,3 @@ if __name__ == '__main__':
     u_output += u'        %s files ignored (%.2f%%)\n' % (u_unk_files, f_unknown_percent)
 
     print u_output
-
-

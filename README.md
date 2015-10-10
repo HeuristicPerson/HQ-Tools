@@ -1,5 +1,13 @@
 # HQ Tools
 
+## Installation
+
+1. Download the latest version of HQ Tools from [github.com/PixelGordo/HQ-Tools](https://github.com/PixelGordo/HQ-Tools) 
+
+2. Uncompress the package wherever you want.
+
+3. Create
+
 ## HQ Copy (hq_copy.py)
 
 ### Usage
@@ -32,12 +40,16 @@ Optional arguments:
 
 * `-s`                Simulation mode; files won't be copied.
 
+* `-r R`              Regex pattern and group. i.e. "(.*),0". Everything BEFORE
+                      the comma is the pattern and everything AFTER the comma is
+                      the group to capture.
+
 
 ### Workaround to rename clean hashes to dirty hashes or vice versa
 
-For program simplicity, you can only specify a global clean or dirty mode for hashes. It means that for example you
-can't rename **clean crc32** -> **dirty crc32**. There is a quick workaround for it. In the first step, you rename your
-clean crc32 files to title mode:
+For program simplicity, you can only specify a global clean or dirty mode for source and destination hashes. It means
+that for example you can't rename **clean crc32** -> **dirty crc32**. There is a quick workaround for it. In the first
+step, you rename your clean crc32 files to title mode:
 
     hq_copy Cct dat_file source_path intermediate_path
     
