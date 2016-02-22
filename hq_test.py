@@ -7,7 +7,7 @@ import libs
 #=======================================================================================================================
 u_PROG_NAME = u'HQ TEST'
 u_PROG_VERSION = u'v2015.09.27'
-tu_MODULES = ('argparse', 'foo')
+tu_MODULES = ('argparse', 'hqlib')
 
 
 # HELPER FUNCTIONS

@@ -1,6 +1,7 @@
 # HQ Tools
 
-## Installation
+Installation
+============
 
 1. Download the latest version of HQ Tools from [github.com/PixelGordo/HQ-Tools](https://github.com/PixelGordo/HQ-Tools) 
 
@@ -8,9 +9,11 @@
 
 3. Create
 
-## HQ Copy (hq_copy.py)
+HQ Copy (hq_copy.py)
+====================
 
-### Usage
+Usage
+-----
 
 (This part of the documentation comes straight from the command line tool help)
 
@@ -45,7 +48,8 @@ Optional arguments:
                       the group to capture.
 
 
-### Workaround to rename clean hashes to dirty hashes or vice versa
+Workaround to rename clean hashes to dirty hashes or vice versa
+---------------------------------------------------------------
 
 For program simplicity, you can only specify a global clean or dirty mode for source and destination hashes. It means
 that for example you can't rename **clean crc32** -> **dirty crc32**. There is a quick workaround for it. In the first

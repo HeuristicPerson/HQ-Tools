@@ -17,12 +17,6 @@ class FilePath:
         self.u_name = self.u_file.rpartition('.')[0]
         self.u_ext = self.u_file.rpartition('.')[2]
 
-        #print 'Full Path: %s' % self.u_path
-        #print 'Root Path: %s' % self.u_root
-        #print 'FilePath Full: %s' % self.u_file
-        #print 'FilePath Name: %s' % self.u_name
-        #print ' FilePath Ext: %s' % self.u_ext
-
     def __str__(self):
         u_output = u'[FilePath]\n'
         u_output += u'  Path: %s\n' % self.u_path
@@ -32,6 +26,15 @@ class FilePath:
         u_output += u'   Ext: %s\n' % self.u_ext
 
         return u_output.encode('utf8')
+
+    def absfile(self):
+        """
+        Method that returns a new FilePath object with the path normalized.
+        :return: a FilePath object.
+        """
+        u_abs_path = os.path.abspath(self.u_path).decode('utf8')
+        o_abs_file = FilePath(u_abs_path)
+        return o_abs_file
 
     def content(self, b_recursive=False):
         """
@@ -69,6 +72,30 @@ class FilePath:
             b_exists = False
 
         return b_exists
+
+    def root_exists(self):
+        """
+        Method to check if the root path exists or not.
+        :return: True/False
+        """
+        if os.path.isdir(self.u_root):
+            b_exists = True
+        else:
+            b_exists = False
+
+        return b_exists
+
+    def root_prepend(self, *pu_path):
+        """
+        Method to add extra elements at the beginning of the root. i.e. cc/dd.jpg -> aa/bb/cc/dd.jpg
+        :param pu_path: Elements to prepend. i.e. "aa", "bb"
+        :return: Nothing
+        """
+        print '0: %s' % pu_path
+        print '1: %s' % self.u_root
+        print os.path.join(pu_path, self.u_root)
+        import sys
+        sys.exit()
 
     def has_ext(self, u_ext):
         """
@@ -116,3 +143,39 @@ class FilePath:
             b_is_file = False
 
         return b_is_file
+
+
+def get_cwd():
+    """
+    Function to get the current working directory.
+
+    :return: A FilePath object.
+    """
+    u_cwd = os.getcwd().decode('utf8')
+    o_cwd = FilePath(u_cwd)
+    return o_cwd
+
+
+def read_nlines(o_file, i_lines):
+    """
+    Function to read n lines from a file
+    :param o_file:
+    :param i_lines:
+    :return:
+    """
+    i_line = 0
+
+    lu_lines = []
+
+    try:
+        for u_line in o_file:
+            i_line += 1
+
+            if i_line > i_lines:
+                break
+            else:
+                lu_lines.append(u_line)
+    except IOError:
+        pass
+
+    return lu_lines

@@ -1,21 +1,35 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+"""
+Command line utility and python library to copy files from folder A to B translating the names between crc32, md5, sha1,
+and title schemes. For hashing names (crc32, md5, sha1), dirty or clean hashes can be used. Dirty means all the files
+included in the full game are used to obtain the global hash (i.e. for a CD game it would be .cue and .bin files). In
+Clean mode, meta-data files not actually present in the real disc (.cue files) wouldn't be taken into account.
+"""
+
 import argparse
+import imp
+# TODO: Remove os dependency and use files.py from libs instead
 import os
 import re
 import shutil
 import sys
 
+
+u_CWD = os.path.dirname(os.path.realpath(__file__))
+
 from hqlib import romdats
+#romdats = imp.load_source(u'romdats', os.path.join(u_CWD, 'hqlib', 'romdats.py'))
+
 import libs
 
 
 # CONSTANTS
 #=======================================================================================================================
-du_FORMATS = {'c': 'crc32', 'm': 'md5', 's': 'sha1', 't': 'hq_title'}
+du_FORMATS = {'c': 'crc32', 'm': 'md5', 's': 'sha1', 't': 'description'}
 u_PROG_NAME = u'HQ COPY'
-u_PROG_VER = u'v2015.09.27'
+u_PROG_VER = u'v2015.10.11'
 
 lu_valid_modes = []
 for u_1st_char in ('C', 'D'):
@@ -35,7 +49,7 @@ def _get_cmd_options():
     :return: TODO: A dictionary with different options.
     """
 
-    o_arg_parser = argparse.ArgumentParser(description='A command line utility to copy and rename files between '
+    o_arg_parser = argparse.ArgumentParser(description='A command line utility to copy and hq_copy files between '
                                                        'different formats using a ROM dat file.')
     o_arg_parser.add_argument('-s',
                               action='store_true',
@@ -62,7 +76,6 @@ def _get_cmd_options():
                               help='Regex pattern and group. i.e. "(.*),0". Everything BEFORE the comma is the '
                                    'pattern and everything AFTER the comma is the group to capture.')
 
-
     # Parsing and validation of the parameters
     i_errors = 0
     u_text_output = u''
@@ -74,7 +87,7 @@ def _get_cmd_options():
     if b_simulation:
         u_text_output += '   SIM: %s simulation is ON, files won\'t be copied\n' % libs.cons.u_OK_TEXT
 
-    # Validating rename mode
+    # Validating hq_copy mode
     if o_args.mode[0] == 'C':
         b_clean_hash = True
     else:
@@ -151,8 +164,6 @@ def _get_cmd_options():
             u_text_output += u'  REXP: %s Wrong regular expression data "%s"\n' % (libs.cons.u_ER_TEXT, u_regex_data)
             i_errors += 1
 
-
-
     if i_errors:
         u_text_output += u'\n%i errors found. Please, fix them and run the program again.' % i_errors
 
@@ -196,15 +207,15 @@ def _regex_catcher(u_text, u_pattern=None, i_group=None):
 
 # MAIN FUNCTION
 #=======================================================================================================================
-def rename(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_clean_hash=False, b_sim=False,
-           b_print=False, u_regex_pattern=None, i_regex_group=None):
+def hq_copy(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_clean_hash=False, b_sim=False,
+            b_print=False, u_regex_pattern=None, i_regex_group=None):
     """
     Renaming function for files and directories. Valid formats are crc32, md5, sha1 and real hq_title.
 
-    Function to rename a file (or the files contained in a directory) from a naming scheme to another one. In HQ_TOOLS,
+    Function to hq_copy a file (or the files contained in a directory) from a naming scheme to another one. In HQ_TOOLS,
     the valid naming schemes for files are:
 
-        - 'hq_title': The file has the same name than the ROM it belongs to. i.e. 'Super Mario World (Eur).jpg'.
+        - 'title': The file has the same name than the ROM it belongs to. i.e. 'Super Mario World (Eur).jpg'.
 
         - 'crc32': The file is named like the CRC32 hash of the ROM it belongs to. i.e. 'ab46b0f1.png'.
 
@@ -235,8 +246,8 @@ def rename(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_
 
     o_start = libs.time.now()
 
-    # Extra parameters check is needed in case the rename function is called from another program because argument check
-    # is valid just when you directly call this program from command line.
+    # Extra parameters check is needed in case the hq_copy function is called from another program because argument
+    # check is valid just when you directly call this program from command line.
     if not os.path.isfile(u_dat):
         raise Exception('Dat file "%s" not found' % u_dat)
 
@@ -276,6 +287,9 @@ def rename(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_
     i_files_recognized = 0
     i_files_renamed = 0
 
+    lu_ren_files = []
+    lu_unk_files = []
+
     # Processing of the files
     for o_src_file_object in lo_files_to_process:
 
@@ -290,6 +304,7 @@ def rename(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_
 
         if o_game:
             i_files_recognized += 1
+            lu_ren_files.append(o_src_file_object.u_file)
 
             if u_dst_fmt in ('c', 'm', 's'):
                 du_hashes = o_game.get_hashes(b_discard_irrelevant=b_clean_hash)
@@ -308,6 +323,7 @@ def rename(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_
                 u_copy_text = libs.cons.u_OK_TEXT
 
         else:
+            lu_unk_files.append(o_src_file_object.u_file)
             u_dst_file_name = '-- UNKNOWN --'
             u_copy_text = libs.cons.u_ER_TEXT
 
@@ -337,6 +353,7 @@ def rename(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_
                                                u_dst_file_name)
 
     if b_print:
+        # This is just an empty line at the end of the converted files
         print
 
     o_end = libs.time.now()
@@ -345,22 +362,25 @@ def rename(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_
             'i_recog_files': i_files_recognized,
             'i_unk_files': i_files_total - i_files_recognized,
             'i_copied_files': i_files_renamed,
-            'o_time': o_end - o_start}
+            'o_time': o_end - o_start,
+            'lu_ren_files': lu_ren_files,
+            'lu_unk_files': lu_unk_files}
 
-# EXECUTION AS NORMAL PROGRAM
+
+# EXECUTION AS COMMAND LINE PROGRAM
 #=======================================================================================================================
 if __name__ == '__main__':
     print libs.strings.hq_title(u_PROG_NAME, u_PROG_VER)
 
     dx_args = _get_cmd_options()
-    dx_rename_output = rename(u_dat=dx_args['u_dat_file'],
-                              u_src_path=dx_args['u_src_path'], u_dst_dir=dx_args['u_dst_path'],
-                              u_src_fmt=dx_args['u_src_format'], u_dst_fmt=dx_args['u_dst_format'],
-                              b_clean_hash=dx_args['b_clean_hash'],
-                              b_sim=dx_args['b_simulation'],
-                              u_regex_pattern=dx_args['u_regex_pattern'],
-                              i_regex_group=dx_args['i_regex_group'],
-                              b_print=True)
+    dx_rename_output = hq_copy(u_dat=dx_args['u_dat_file'],
+                               u_src_path=dx_args['u_src_path'], u_dst_dir=dx_args['u_dst_path'],
+                               u_src_fmt=dx_args['u_src_format'], u_dst_fmt=dx_args['u_dst_format'],
+                               b_clean_hash=dx_args['b_clean_hash'],
+                               b_sim=dx_args['b_simulation'],
+                               u_regex_pattern=dx_args['u_regex_pattern'],
+                               i_regex_group=dx_args['i_regex_group'],
+                               b_print=True)
 
     # Some basic stats are printed to screen
     f_renamed_percent = 100.0 * dx_rename_output['i_recog_files'] / dx_rename_output['i_total_files']
