@@ -97,7 +97,7 @@ class FilePath:
         import sys
         sys.exit()
 
-    def has_ext(self, u_ext):
+    def has_exts(self, *plu_exts):
         """
         Method to check if the FilePath object has certain extension no matter the casing.
 
@@ -107,10 +107,12 @@ class FilePath:
                  result).
         """
 
-        if self.u_ext.lower() == u_ext.lower():
-            b_has_ext = True
-        else:
-            b_has_ext = False
+        b_has_ext = False
+
+        for u_ext in plu_exts:
+            if self.u_ext.lower() == u_ext.lower():
+                b_has_ext = True
+                break
 
         return b_has_ext
 

@@ -97,7 +97,7 @@ def _parse_coord_chunk(pu_coord_chunk):
     :return: The parsed coordinate as a dictionary. i.e. {'f_coor': 15, 'f_delta': 3}
     """
 
-    lu_values = re.findall(r'([+\-]?\d+)', pu_coord_chunk)
+    lu_values = re.findall(r'([+\-]?\d+\.?\d*)', pu_coord_chunk)
 
     # 1st element, the actual coordinate, is mandatory
     f_coord = float(lu_values[0])

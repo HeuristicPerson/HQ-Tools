@@ -6,6 +6,7 @@ Function and command line utility to convert "raw" game images
 """
 
 import argparse
+import re
 import sys
 
 import libs
@@ -17,7 +18,6 @@ u_PROG_NAME = u'HQ IMAGE CONVERT'
 u_PROG_VER = u'v2016.02.21'
 
 tu_MODES = ('frame',)
-tu_GRABS = ('top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right')
 
 o_CWD = libs.files.get_cwd()
 o_IMG_CONV_DEF_CFG = libs.imagemagick.ImgConvertRandomCfg()
@@ -39,6 +39,20 @@ def _get_cmd_options():
     u_platforms = u_platforms.strip()
     u_platforms = u_platforms.strip(u',')
 
+    # Fixing a problem in argparse when entering optional arguments with negative numbers (i.e. -a -1.0) which confuse
+    # argparse since it thinks the -1.0 means: a) "-a" option doesn't have the following needed argument value, b) there
+    # is an unknown extra argument "-1.0". The quick (and dirty) solution is to pre-process the arguments and add an
+    # extra space at the beginning of the affected arguments.
+    lu_new_args = []
+    for u_arg in sys.argv:
+        if u_arg[0] == '-' and u_arg[1].isdigit():
+            lu_new_args.append(' %s' % u_arg)
+        else:
+            lu_new_args.append(u_arg)
+    sys.argv = lu_new_args
+    #for i, arg in enumerate(sys.argv):
+    #    if (arg[0] == '-') and arg[1].isdigit(): sys.argv[i] = ' ' + arg
+
     o_arg_parser = argparse.ArgumentParser(description='A command line utility to convert and "enrich" video-game '
                                                        'screenshots.')
     o_arg_parser.add_argument('mode',
@@ -56,15 +70,14 @@ def _get_cmd_options():
                               default='0,0',
                               help='Aspect ratio or platform alias. i.e. "16,9" or "nes". Valid platform alias are: %s.'
                                    % u_platforms)
-    o_arg_parser.add_argument('-g',
-                              action='store',
-                              default='center',
-                              choices=tu_GRABS,
-                              help='Grab point. .i.e.')
-    o_arg_parser.add_argument('-o',
+    o_arg_parser.add_argument('-f',
                               action='store',
                               default='0,0',
-                              help='Image offset . i.e. "20+5,10+3"')
+                              help='Focus point relative coordinates x,y. i.e. "0.0,1.0" would be bottom-left corner.')
+    o_arg_parser.add_argument('-b',
+                              action='store',
+                              default='#808080ff',
+                              help='Background hex color in RGBA format. i.e. "ff000080".')
     o_arg_parser.add_argument('-r',
                               action='store',
                               default='0+0',
@@ -140,7 +153,7 @@ def _get_cmd_options():
 
     # Aspect ratio
     #-------------
-    u_aspect = o_args.a
+    u_aspect = o_args.a.strip()
     o_aspect = None
 
     if u_aspect is not None and libs.geom.is_valid_coord_string(u_aspect):
@@ -159,9 +172,36 @@ def _get_cmd_options():
 
     u_output += u'\n  G_ASP: %s\n' % u_msg
 
+    # Background color
+    #-----------------
+    u_bgcolor = o_args.b.strip()
+
+    if u_bgcolor.lower() == _parse_color(u_bgcolor):
+        u_msg = u'%s %s' % (libs.cons.u_OK_TEXT, u_bgcolor)
+    else:
+        i_cmd_errors += 1
+        u_msg = u'%s %s - Unknown color format' % (libs.cons.u_ER_TEXT, u_bgcolor)
+
+    u_output += u'  G_BGC: %s\n' % u_msg
+
+    # Focus
+    #------
+    u_focus = o_args.f.strip()
+    o_focus = None
+
+    if libs.geom.is_valid_coord_string(u_focus):
+        o_focus = libs.geom.Coord()
+        o_focus.from_str(u_focus)
+        u_msg = u'%s %s±%s, %s±%s' % (libs.cons.u_OK_TEXT, o_focus.f_x, o_focus.f_dx, o_focus.f_y, o_focus.f_dy)
+    else:
+        i_cmd_errors += 1
+        u_msg = u'%s %s - Unknown format' % (libs.cons.u_ER_TEXT, u_focus)
+
+    u_output += u'  G_FOC: %s\n' % u_msg
+
     # Rotation
     #---------
-    u_rotation = o_args.r
+    u_rotation = o_args.r.strip()
     o_rotation = None
 
     if libs.geom.is_valid_coord_string(u_rotation):
@@ -176,7 +216,7 @@ def _get_cmd_options():
 
     # Size
     #-----
-    u_size = o_args.s
+    u_size = o_args.s.strip()
     o_size = None
 
     if libs.geom.is_valid_coord_string(u_size):
@@ -193,38 +233,18 @@ def _get_cmd_options():
 
     u_output += u'  G_SIZ: %s\n' % u_msg
 
-    # Grab
-    #-----
-    u_grab = o_args.g
-    u_output += u'  G_GRA: %s %s\n' % (libs.cons.u_OK_TEXT, u_grab)
-
-    # Offset
-    #-------
-    u_offset = o_args.o
-    o_offset = None
-    if libs.geom.is_valid_coord_string(u_offset):
-        o_offset = libs.geom.Coord()
-        o_offset.from_str(u_offset)
-        u_msg = u'%s %i±%i,%i±%i px\n' % (libs.cons.u_OK_TEXT, o_offset.f_x, o_offset.f_dx, o_offset.f_y, o_offset.f_dy)
-    else:
-        i_cmd_errors += 1
-        u_msg = u'%s %s' % (libs.cons.u_ER_TEXT, u_offset)
-
-    u_output += u'  G_OFF: %s' % u_msg
-
     # Preparing the graphical configuration object
     #---------------------------------------------
     o_graph_cfg = libs.imagemagick.ImgConvertRandomCfg()
+    o_graph_cfg.u_bgcolor = u_bgcolor
     if o_aspect:
         o_graph_cfg.ti_aspect = (int(o_aspect.f_x), int(o_aspect.f_y))
-    if o_offset:
-        o_graph_cfg.ti_offset = (int(o_offset.f_x), int(o_offset.f_y), int(o_offset.f_dx), int(o_offset.f_dy))
+    if o_focus:
+        o_graph_cfg.tf_focus = (o_focus.f_x, o_focus.f_y, o_focus.f_dx, o_focus.f_dy)
     if o_rotation:
         o_graph_cfg.tf_rotation = (o_rotation.f_x, o_rotation.f_dx)
     if o_size:
         o_graph_cfg.ti_size = (int(o_size.f_x), int(o_size.f_y), int(o_size.f_dx), int(o_size.f_dy))
-    if u_grab:
-        o_graph_cfg.u_grab = u_grab
 
     print u_output
 
@@ -238,11 +258,23 @@ def _get_cmd_options():
                 'o_cfg': o_graph_cfg}
 
 
+def _parse_color(pu_string):
+    """
+    Function to check if a string contains a valid RGB(A) hexadecimal color.
+    :return: True/False
+    """
+    u_pattern = r'(#[0-9a-f]{8})|(#[0-9a-f]{6})'
+    o_match = re.search(u_pattern, pu_string, flags=0)
+    return o_match.group()
+
+
 def img_convert(pu_mode=None, pu_src_file=None, pu_dst_file=None, po_cfg=o_IMG_CONV_DEF_CFG):
 
     # I think that for code organization it'd be a better idea to make this function just a wrapper of a function
     # located in imagemagick. That way, I could add the available transformations (frame, sphere, magcover...) list in
     # there. So, everytime I neede to define a new transformation, I'd just need to modify that file.
+    o_src_file = libs.files.FilePath(pu_src_file)
+
     o_output = libs.imagemagick.cnv_img(pu_mode, pu_src_file, pu_dst_file, po_cfg)
     return o_output
 
@@ -254,6 +286,7 @@ if __name__ == '__main__':
     dx_cmd_args = _get_cmd_options()
 
     # If src/dst and directories, the list of files inside src dir will be obtained and processed.
+    # TODO: Filter out files that are not images
     lo_src_files = []
     lo_dst_files = []
 
@@ -269,11 +302,20 @@ if __name__ == '__main__':
                 lo_dst_files.append(o_dst_file)
 
     # Image processing
+    print 'Processing'
+    print '-----------------------------------------'
     for o_src_file, o_dst_file in zip(lo_src_files, lo_dst_files):
 
-        print 'WRITTEN: %s' % o_dst_file.u_path
+        print 'WRITING: %s %s' % (libs.cons.u_PR_TEXT, o_dst_file.u_path),
 
-        img_convert(pu_mode=dx_cmd_args['u_mode'],
-                    pu_src_file=o_src_file.u_path,
-                    pu_dst_file=o_dst_file.u_path,
-                    po_cfg=dx_cmd_args['o_cfg'])
+        o_key_coords = img_convert(pu_mode=dx_cmd_args['u_mode'],
+                                   pu_src_file=o_src_file.u_path,
+                                   pu_dst_file=o_dst_file.u_path,
+                                   po_cfg=dx_cmd_args['o_cfg'])
+
+        if o_key_coords:
+            u_result_text = libs.cons.u_OK_TEXT
+        else:
+            u_result_text = libs.cons.u_ER_TEXT
+
+        print '\rCREATED: %s %s' % (u_result_text, o_dst_file.u_path)

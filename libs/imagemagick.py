@@ -9,8 +9,8 @@ import os
 import random
 from PIL import Image
 
-
 import cmd
+import files
 import geom
 
 # CONSTANTS
@@ -18,6 +18,7 @@ import geom
 u_CWD = os.path.dirname(os.path.abspath(__file__))
 u_MEDIA_ROOT = os.path.join(u_CWD, '..', 'media')
 
+lu_VALID_EXTS = ('bmp', 'gif', 'jpg', 'png')
 tu_CNV_MODES = ('frame', 'magcover')
 
 
@@ -30,11 +31,11 @@ class ImgConvertRandomCfg():
     image manipulation.
     """
     def __init__(self):
-        self.ti_aspect = (0, 0)          # aspect ratio: x, y
-        self.ti_offset = (0, 0, 0, 0)    # offset: x, y, random_x, random_y
-        self.tf_rotation = (0, 0)        # rotation: θ, random_θ
-        self.ti_size = (500, 500, 0, 0)  # size: x, y, random_x, random_y
-        self.u_grab = 'center'
+        self.u_bgcolor = u'#808080ff'    # Background color in RGBA format.
+        self.ti_aspect = (0, 0)          # Aspect ratio: x, y
+        self.tf_focus = (0, 0, 0, 0)     # Focus point (relative): x, y, random_x, random_y
+        self.tf_rotation = (0, 0)        # Rotation: θ, random_θ
+        self.ti_size = (500, 500, 0, 0)  # Size: x, y, random_x, random_y
 
     def randomize(self):
         """
@@ -43,12 +44,13 @@ class ImgConvertRandomCfg():
         :return: An ImgConvertRandomCfg object with all the random properties already applied.
         """
         o_img_convert_cfg = ImgConvertCfg()
+        o_img_convert_cfg.u_bgcolor = self.u_bgcolor
         o_img_convert_cfg.f_rotation = _randomize(self.tf_rotation[0], self.tf_rotation[1])
+        o_img_convert_cfg.tf_focus = (_randomize(self.tf_focus[0], self.tf_focus[2]),
+                                      _randomize(self.tf_focus[1], self.tf_focus[3]))
         o_img_convert_cfg.ti_aspect = self.ti_aspect
         o_img_convert_cfg.ti_size = (max(int(_randomize(self.ti_size[0], self.ti_size[2])), 0),
                                      max(int(_randomize(self.ti_size[1], self.ti_size[3])), 0))
-
-        #TODO: Decide if ti_offset and u_grab are relevant to be kept to randomize them or not.
 
         return o_img_convert_cfg
 
@@ -56,27 +58,20 @@ class ImgConvertRandomCfg():
         u_output = u''
         u_output += u'[ImgConvertRandomCfg]\n'
         u_output += u'  .ti_aspect = %s  (x, y)\n' % str(self.ti_aspect)
-        u_output += u'  .ti_offset = %s  (x, y, Rx, Ry)\n' % str(self.ti_offset)
+        u_output += u'  .tf_focus = %s  (x, y, Rx, Ry)\n' % str(self.tf_focus)
         u_output += u'  .tf_rotation = %s  (θ, Rθ)\n' % str(self.tf_rotation)
         u_output += u'  .ti_size = %s  (x, y)' % str(self.ti_size)
 
         return u_output.encode('utf8')
 
-    def valid_cfg(self):
-        """
-        Method to check if the configuration is valid or not.
-
-        :return: True if the configuration is right, False in other case.
-        """
-        pass
-
 
 class ImgConvertCfg():
     def __init__(self):
-        self.ti_aspect = (0, 0)     # aspect ratio: x, y
-        self.ti_offset = (0, 0)     # aspect ratio: x, y
-        self.ti_size = (500, 500)   # Image size: x, y
-        self.f_rotation = 0         # Image rotation: θ (anti-clockwise)
+        self.u_bgcolor = u'#80808080'  # Background color
+        self.tf_focus = (0.0, 0.0)     # relative focus point (center point for certain effects): x, y
+        self.ti_aspect = (0, 0)        # aspect ratio: x, y
+        self.ti_size = (500, 500)      # Image size: x, y
+        self.f_rotation = 0            # Image rotation: θ (anti-clockwise)
 
 
 class ImgKeyCoords():
@@ -85,20 +80,20 @@ class ImgKeyCoords():
     """
     def __init__(self):
 
-        self.ti_size = (0, 0)         # Image size
+        self.ti_size = (0, 0)          # Image size
 
         # It's better to keep coordinates as decimal numbers from 0.0 to 1.0 so in case of resizing the final image the
         # relative coordinates will remain the same.
         self.tf_top_left = (0, 0)      # Top-left corner coordinates
-        self.tf_top = (0, 0)          # Top (center) coordinates
+        self.tf_top = (0, 0)           # Top (center) coordinates
         self.tf_top_right = (0, 0)     # Top-right corner coordinates
 
-        self.tf_left = (0, 0)         # Left (center) coordinates
-        self.tf_center = (0, 0)       # Center coordinates
-        self.tf_right = (0, 0)        # Right (center) coordinates
+        self.tf_left = (0, 0)          # Left (center) coordinates
+        self.tf_center = (0, 0)        # Center coordinates
+        self.tf_right = (0, 0)         # Right (center) coordinates
 
         self.tf_bottom_left = (0, 0)   # Bottom-left coordinates
-        self.tf_bottom = (0, 0)       # Bottom (center) coordinates
+        self.tf_bottom = (0, 0)        # Bottom (center) coordinates
         self.tf_bottom_right = (0, 0)  # Bottom-right coordinates
 
     def __str__(self):
@@ -119,36 +114,42 @@ class ImgKeyCoords():
 
 # MAIN CONVERTER FUNCTIONS
 #=======================================================================================================================
-def cnv_img(pu_mode, pu_input_file, pu_output_file, po_random_precfg):
+def cnv_img(pu_mode, pu_src_file, pu_dst_file, po_random_precfg):
     """
     Main convert function that will call different sub-convert functions depending on the value of pu_mode.
 
     :param pu_mode: Mode of image conversion. i.e. 'frame'
 
-    :param pu_input_file: Source file for conversion. i.e. '/home/john/original_picture.jpg'
+    :param pu_src_file: Source file for conversion. i.e. '/home/john/original_picture.jpg'
 
-    :param pu_output_file: Destination file for conversion. i.e. '/home/john/final_picture.jpg'
+    :param pu_dst_file: Destination file for conversion. i.e. '/home/john/final_picture.jpg'
 
     :param po_random_precfg: Configuration object with main options for conversion (size, rotation, grab point...)
 
     :return:
     """
 
-    o_cfg = po_random_precfg.randomize()
+    o_src_file = files.FilePath(pu_src_file)
 
-    # Automatic aspect ratio (zero in any of the aspect ratios x,y) fixing
-    if 0.0 in o_cfg.ti_aspect:
-        o_img = Image.open(pu_input_file, 'r')
-        o_cfg.ti_aspect = o_img.size
-        o_img.close()
+    if not o_src_file.has_exts(*lu_VALID_EXTS):
+        raise ValueError('Not a valid src file extension (%s); valid ones are %s.' % (o_src_file.u_ext,
+                                                                                      str(lu_VALID_EXTS)))
+    else:
+        o_cfg = po_random_precfg.randomize()
 
-    # Error handling code
-    if pu_mode not in tu_CNV_MODES:
-        raise ValueError('pu_mode must be one of the these: %s' % ', '.join(tu_CNV_MODES))
+        # Automatic aspect ratio (zero in any of the aspect ratios x,y) fixing
+        if 0.0 in o_cfg.ti_aspect:
+            o_img = Image.open(pu_src_file, 'r')
+            o_cfg.ti_aspect = o_img.size
+            o_img.close()
 
-    # Calling to sub-functions
-    elif pu_mode == 'frame':
-        o_transformation = _cnv_frame(pu_input_file, pu_output_file, o_cfg)
+        # Error handling code
+        if pu_mode not in tu_CNV_MODES:
+            raise ValueError('pu_mode must be one of the these: %s' % ', '.join(tu_CNV_MODES))
+
+        # Calling to sub-functions
+        elif pu_mode == 'frame':
+            o_transformation = _cnv_frame(pu_src_file, pu_dst_file, o_cfg)
 
     return o_transformation
 
@@ -156,6 +157,8 @@ def cnv_img(pu_mode, pu_input_file, pu_output_file, po_random_precfg):
 def _cnv_frame(pu_src_file, pu_dst_file, po_cfg):
     """
     Image conversion that adds a picture frame around the image and soft reflections.
+
+    Focus point is used to set the center of the reflection image.
 
     :param pu_src_file: Input file. i.e. '/home/john/original_picture.jpg'
 
@@ -168,38 +171,71 @@ def _cnv_frame(pu_src_file, pu_dst_file, po_cfg):
     """
 
     # Media preparation
-    u_img_light = os.path.join(u_MEDIA_ROOT, 'frame', 'white-add.png')
+    #------------------
+    u_img_light = os.path.join(u_MEDIA_ROOT, 'frame', 'brightness.png')
+    u_img_light = os.path.abspath(u_img_light)
     u_img_light = u_img_light.decode('utf8')
 
     # Variables preparation for imagemagick command
-    i_width, i_height = geom.max_in_rect(po_cfg.ti_size, po_cfg.ti_aspect)
+    #----------------------------------------------
+    ti_img_size = geom.max_in_rect(po_cfg.ti_size, po_cfg.ti_aspect)
+    i_light_size = 2 * max(ti_img_size[0], ti_img_size[1])
 
+    # Real location (x,y) in pixels of the focus point of the image
+    ti_focus = (int(po_cfg.tf_focus[0] * ti_img_size[0]), int(po_cfg.tf_focus[1] * ti_img_size[1]))
+
+    # Then, the offsets are calculated to make the center of the light image fall over that point. Imagemagick format
+    # for offsets in geometry is +x+y when moving the top-left corner of the overlay image x pixels to the right and y
+    # pixels to the bottom.
+    ti_foc_img_off = (- 0.5 * i_light_size + ti_focus[0], - 0.5 * i_light_size + ti_focus[1])
+    if ti_foc_img_off[0] >= 0:
+        u_foc_img_extra_x = u'+'
+    else:
+        u_foc_img_extra_x = u''
+
+    if ti_foc_img_off[1] >= 0:
+        u_foc_img_extra_y = u'+'
+    else:
+        u_foc_img_extra_y = u''
+
+    u_foc_img_off = u'%s%i%s%i' % (u_foc_img_extra_x, ti_foc_img_off[0], u_foc_img_extra_y, ti_foc_img_off[1])
+
+    # Frame configuration
     i_frame_thickness = math.ceil(0.03 * min(po_cfg.ti_size))
     u_frame_color = u'#f0f0f0'
-    i_frame_width = i_width + 2 * i_frame_thickness
-    i_frame_height = i_height + 2 * i_frame_thickness
+    ti_frame_size = (ti_img_size[0] + 2 * i_frame_thickness, ti_img_size[1] + 2 * i_frame_thickness)
 
+    # Shadow configuration
     i_shadow_dist = math.ceil(0.005 * min(po_cfg.ti_size))
-    i_shadow_opac = 60                                                                   # 0-100
+    i_shadow_opac = 60                                                                       # 0-100
     i_shadow_blur = math.ceil(0.0025 * max(po_cfg.ti_size))
 
+    # Sin and Cos of the rotation are going to be used several times so I pre-calculate them to make the script a bit
+    # faster.
     f_sin = math.sin(math.radians(po_cfg.f_rotation))
     f_cos = math.cos(math.radians(po_cfg.f_rotation))
 
     # Command line build
     #-------------------
     u_cmd = u'convert '
-    u_cmd += u'"%s" ' % pu_src_file                                                      # Source file
-    u_cmd += u'-resize %ix%i! ' % (i_width, i_height)                                    # Resizing
-    u_cmd += u'-background transparent '                                                 # Transparent background
-    u_cmd += u'"%s" -resize %ix -composite ' % (u_img_light, i_width)                    # Light/shadow add
-    u_cmd += u'-bordercolor \'%s\' -border %i ' % (u_frame_color, i_frame_thickness)     # Frame border
-    u_cmd += u'-rotate %f ' % -po_cfg.f_rotation                                         # Rotation
+    u_cmd += u'"%s" ' % pu_src_file                                                          # Source file
+    u_cmd += u'-resize %ix%i! ' % (ti_img_size[0], ti_img_size[1])                           # Resizing
+    u_cmd += u'-background transparent '                                                     # Transparent background
+
+    u_cmd += u'\( "%s" -resize %ix%i! -geometry %s \) -composite ' % (u_img_light,
+                                                                      i_light_size,
+                                                                      i_light_size,
+                                                                      u_foc_img_off)         # Light/shadow add
+
+    u_cmd += u'-bordercolor \'%s\' -border %i ' % (u_frame_color, i_frame_thickness)         # Frame border
+    u_cmd += u'-rotate %f ' % -po_cfg.f_rotation                                             # Rotation
     u_cmd += u'\( -clone 0 -background black -shadow %ix%i+0+%i \) ' % (i_shadow_opac,
                                                                         i_shadow_blur,
-                                                                        i_shadow_dist)   # Shadow creation
-    u_cmd += u'-reverse -background none -layers merge +repage '                         # Shadow composition
-    u_cmd += u'"%s" ' % pu_dst_file                                                      # Output file
+                                                                        i_shadow_dist)       # Shadow creation
+    u_cmd += u'-reverse -background none -layers merge +repage '                             # Shadow composition
+
+    u_cmd += u'-background "%s" -flatten ' % po_cfg.u_bgcolor                                # Background color
+    u_cmd += u'"%s" ' % pu_dst_file                                                          # Output file
 
     # Command line execution
     #-----------------------
@@ -211,18 +247,18 @@ def _cnv_frame(pu_src_file, pu_dst_file, po_cfg):
     # Coordinates calculation after image manipulation
     #-------------------------------------------------
     o_img = Image.open(pu_dst_file, 'r')
-    ti_size = o_img.size
+    ti_img_size = o_img.size
     o_img.close()
 
     i_extra_top = max(0, i_shadow_blur - i_shadow_dist)
     i_extra_bottom = max(0, i_shadow_blur + i_shadow_dist)
 
     # Delta distances in rotated image in screen coordinates
-    tf_dx = (0.5 * i_frame_width * f_cos, 0.5 * i_frame_width * f_sin)
-    tf_dy = (0.5 * i_frame_height * f_sin, 0.5 * i_frame_height * f_cos)
+    tf_dx = (0.5 * ti_frame_size[0] * f_cos, 0.5 * ti_frame_size[0] * f_sin)
+    tf_dy = (0.5 * ti_frame_size[1] * f_sin, 0.5 * ti_frame_size[1] * f_cos)
 
     # Absolute offsets of image key-positions
-    tf_center = (0.5 * ti_size[0], 0.5 * (ti_size[1] - i_extra_top - i_extra_bottom) + i_extra_top)
+    tf_center = (0.5 * ti_img_size[0], 0.5 * (ti_img_size[1] - i_extra_top - i_extra_bottom) + i_extra_top)
     tf_left = (tf_center[0] - tf_dx[0], tf_center[1] + tf_dx[1])
     tf_right = (tf_center[0] + tf_dx[0], tf_center[1] - tf_dx[1])
 
@@ -236,16 +272,16 @@ def _cnv_frame(pu_src_file, pu_dst_file, po_cfg):
 
     # Relative (0.0 to 1.0) offsets of image key-positions
     o_img_transformation = ImgKeyCoords()
-    o_img_transformation.ti_size = ti_size
-    o_img_transformation.tf_top_left = (tf_top_left[0] / ti_size[0], tf_top_left[1] / ti_size[1])
-    o_img_transformation.tf_top = (tf_top[0] / ti_size[0], tf_top[1] / ti_size[1])
-    o_img_transformation.tf_top_right = (tf_top_right[0] / ti_size[0], tf_top_right[1] / ti_size[1])
-    o_img_transformation.tf_left = (tf_left[0] / ti_size[0], tf_left[1] / ti_size[1])
-    o_img_transformation.tf_center = (tf_center[0] / ti_size[0], tf_center[1] / ti_size[1])
-    o_img_transformation.tf_right = (tf_right[0] / ti_size[0], tf_right[1] / ti_size[1])
-    o_img_transformation.tf_bottom_left = (tf_bottom_left[0] / ti_size[0], tf_bottom_left[1] / ti_size[1])
-    o_img_transformation.tf_bottom = (tf_bottom[0] / ti_size[0], tf_bottom[1] / ti_size[1])
-    o_img_transformation.tf_bottom_right = (tf_bottom_right[0] / ti_size[0], tf_bottom_right[1] / ti_size[1])
+    o_img_transformation.ti_size = ti_img_size
+    o_img_transformation.tf_top_left = (tf_top_left[0] / ti_img_size[0], tf_top_left[1] / ti_img_size[1])
+    o_img_transformation.tf_top = (tf_top[0] / ti_img_size[0], tf_top[1] / ti_img_size[1])
+    o_img_transformation.tf_top_right = (tf_top_right[0] / ti_img_size[0], tf_top_right[1] / ti_img_size[1])
+    o_img_transformation.tf_left = (tf_left[0] / ti_img_size[0], tf_left[1] / ti_img_size[1])
+    o_img_transformation.tf_center = (tf_center[0] / ti_img_size[0], tf_center[1] / ti_img_size[1])
+    o_img_transformation.tf_right = (tf_right[0] / ti_img_size[0], tf_right[1] / ti_img_size[1])
+    o_img_transformation.tf_bottom_left = (tf_bottom_left[0] / ti_img_size[0], tf_bottom_left[1] / ti_img_size[1])
+    o_img_transformation.tf_bottom = (tf_bottom[0] / ti_img_size[0], tf_bottom[1] / ti_img_size[1])
+    o_img_transformation.tf_bottom_right = (tf_bottom_right[0] / ti_img_size[0], tf_bottom_right[1] / ti_img_size[1])
 
     # Debug code to overlay image regions
     # draw_coordinates(pu_dst_file, o_img_transformation)

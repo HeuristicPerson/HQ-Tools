@@ -6,6 +6,7 @@ import platform
 
 u_OK_TEXT = u'✔'
 u_ER_TEXT = u'x'
+u_PR_TEXT = u'⌛'
 u_SET_NAME = u'HQ UTILS'
 
 # Screen proportions

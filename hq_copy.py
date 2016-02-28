@@ -49,7 +49,7 @@ def _get_cmd_options():
     :return: TODO: A dictionary with different options.
     """
 
-    o_arg_parser = argparse.ArgumentParser(description='A command line utility to copy and hq_copy files between '
+    o_arg_parser = argparse.ArgumentParser(description='A command line utility to copy and rename files between '
                                                        'different formats using a ROM dat file.')
     o_arg_parser.add_argument('-s',
                               action='store_true',
@@ -87,7 +87,7 @@ def _get_cmd_options():
     if b_simulation:
         u_text_output += '   SIM: %s simulation is ON, files won\'t be copied\n' % libs.cons.u_OK_TEXT
 
-    # Validating hq_copy mode
+    # Validating rename mode
     if o_args.mode[0] == 'C':
         b_clean_hash = True
     else:
