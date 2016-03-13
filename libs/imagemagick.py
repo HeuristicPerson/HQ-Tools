@@ -7,9 +7,9 @@ Library with ImageMagic transformations
 import math
 import os
 import random
-from PIL import Image
 
 import cmd
+import cons
 import files
 import geom
 
@@ -18,13 +18,13 @@ import geom
 u_CWD = os.path.dirname(os.path.abspath(__file__))
 u_MEDIA_ROOT = os.path.join(u_CWD, '..', 'media')
 
-lu_VALID_EXTS = ('bmp', 'gif', 'jpg', 'png')
+tu_VALID_EXTS = ('bmp', 'gif', 'jpg', 'png')
 tu_CNV_MODES = ('frame', 'magcover')
 
 
 # CLASSES
 #=======================================================================================================================
-class ImgConvertRandomCfg():
+class ImgConvCfgGenerator(object):
     """
     Class to store ImageConvert proto-configuration with associated random values. Before using the configuration, the
     random values need to be applied and then that final already-randomized configuration object will be used for the
@@ -32,46 +32,81 @@ class ImgConvertRandomCfg():
     """
     def __init__(self):
         self.u_bgcolor = u'#808080ff'    # Background color in RGBA format.
-        self.ti_aspect = (0, 0)          # Aspect ratio: x, y
+        self._tf_aspect = (0, 0)         # Aspect ratio: x, y
         self.tf_focus = (0, 0, 0, 0)     # Focus point (relative): x, y, random_x, random_y
         self.tf_rotation = (0, 0)        # Rotation: θ, random_θ
         self.ti_size = (500, 500, 0, 0)  # Size: x, y, random_x, random_y
+        self.u_format = None             # File extension
+
+    def __str__(self):
+        u_output = u''
+        u_output += u'<ImgConvCfgGenerator>\n'
+        u_output += u'  .tf_aspect:   %s  (x, y)\n' % str(self._tf_aspect)
+        u_output += u'  .tf_focus:    %s  (x, y, Rx, Ry)\n' % str(self.tf_focus)
+        u_output += u'  .tf_rotation: %s  (θ, Rθ)\n' % str(self.tf_rotation)
+        u_output += u'  .ti_size:     %s  (x, y, Rx, Ry)\n' % str(self.ti_size)
+        u_output += u'  .u_format:    %s' % self.u_format
+
+        return u_output.encode('utf8')
 
     def randomize(self):
         """
-        Method to randomize the randomizable values and generate a static ImgConvertRandomCfg.
+        Method to randomize the randomizable values and generate a static ImgConvCfgGenerator.
 
-        :return: An ImgConvertRandomCfg object with all the random properties already applied.
+        :return: An ImgConvCfg object with all the random properties already applied.
         """
         o_img_convert_cfg = ImgConvertCfg()
         o_img_convert_cfg.u_bgcolor = self.u_bgcolor
         o_img_convert_cfg.f_rotation = _randomize(self.tf_rotation[0], self.tf_rotation[1])
         o_img_convert_cfg.tf_focus = (_randomize(self.tf_focus[0], self.tf_focus[2]),
                                       _randomize(self.tf_focus[1], self.tf_focus[3]))
-        o_img_convert_cfg.ti_aspect = self.ti_aspect
+        o_img_convert_cfg.tf_aspect = self._tf_aspect
         o_img_convert_cfg.ti_size = (max(int(_randomize(self.ti_size[0], self.ti_size[2])), 0),
                                      max(int(_randomize(self.ti_size[1], self.ti_size[3])), 0))
+        o_img_convert_cfg.u_format = self.u_format
 
         return o_img_convert_cfg
 
-    def __str__(self):
-        u_output = u''
-        u_output += u'[ImgConvertRandomCfg]\n'
-        u_output += u'  .ti_aspect = %s  (x, y)\n' % str(self.ti_aspect)
-        u_output += u'  .tf_focus = %s  (x, y, Rx, Ry)\n' % str(self.tf_focus)
-        u_output += u'  .tf_rotation = %s  (θ, Rθ)\n' % str(self.tf_rotation)
-        u_output += u'  .ti_size = %s  (x, y)' % str(self.ti_size)
+    def _get_aspect(self):
+        return self._tf_aspect
 
-        return u_output.encode('utf8')
+    def _set_aspect(self, px_value):
+        """
+        Method to allow setting the aspect using nicknames and actual values.
+        """
+        if _is_valid_tuple(px_value, 2, int, float):
+            self._tf_aspect = px_value
+        elif px_value in cons.do_platforms:
+            self._tf_aspect = (cons.do_platforms[px_value].i_WIDTH, cons.do_platforms[px_value].i_HEIGHT)
+        else:
+            raise ValueError('Expecting a tuple of 2 integers or a string between %s' % ', '.join(cons.do_platforms))
+
+    tf_aspect = property(_get_aspect, _set_aspect)
 
 
 class ImgConvertCfg():
+    """
+    A configuration object for the cnv_img function.
+    """
     def __init__(self):
-        self.u_bgcolor = u'#80808080'  # Background color
-        self.tf_focus = (0.0, 0.0)     # relative focus point (center point for certain effects): x, y
-        self.ti_aspect = (0, 0)        # aspect ratio: x, y
-        self.ti_size = (500, 500)      # Image size: x, y
-        self.f_rotation = 0            # Image rotation: θ (anti-clockwise)
+        self.u_bgcolor = u'80808080'  # Background color
+        self.tf_focus = (0.0, 0.0)    # relative focus point (center point for certain effects): x, y (0.0 to 1.0)
+        self.tf_aspect = (0.0, 0.0)   # aspect ratio: x, y
+        self.ti_size = (500, 500)     # Image size: x, y (pixels)
+        self.f_rotation = 0           # Image rotation: θ (anti-clockwise degrees)
+        self.u_format = None          # Image format. i.e. 'png', 'gif', 'jpg'...
+
+    def __str__(self):
+        u_output = u''
+        u_output += u'<ImgConvertCfg>\n'
+        u_output += u'  .f_rotation: %s\n' % self.f_rotation
+        u_output += u'  .tf_focus:   %s  (x, y)\n' % str(self.tf_focus)
+        u_output += u'  .tf_aspect:  %s  (x, y)\n' % str(self.tf_aspect)
+        u_output += u'  .ti_size:    %s  (x,y)\n' % str(self.ti_size)
+        u_output += u'  .u_bgcolor:  %s\n' % self.u_bgcolor
+        u_output += u'  .u_format:   %s' % self.u_format
+
+        return u_output.encode('utf8')
 
 
 class ImgKeyCoords():
@@ -80,6 +115,7 @@ class ImgKeyCoords():
     """
     def __init__(self):
 
+        self.o_path = None             # Image path
         self.ti_size = (0, 0)          # Image size
 
         # It's better to keep coordinates as decimal numbers from 0.0 to 1.0 so in case of resizing the final image the
@@ -98,6 +134,7 @@ class ImgKeyCoords():
 
     def __str__(self):
         u_output = u'<ImgKeyCoords>\n'
+        u_output += u'  .o_path:          <FilePath: %s>\n' % self.o_path.u_path
         u_output += u'  .ti_size:         %s\n' % str(self.ti_size)
         u_output += u'  .tf_top_left:     %s\n' % str(self.tf_top_left)
         u_output += u'  .tf_top:          %s\n' % str(self.tf_top)
@@ -114,7 +151,7 @@ class ImgKeyCoords():
 
 # MAIN CONVERTER FUNCTIONS
 #=======================================================================================================================
-def cnv_img(pu_mode, pu_src_file, pu_dst_file, po_random_precfg):
+def cnv_img(pu_mode, po_src_file, po_dst_file, po_random_precfg):
     """
     Main convert function that will call different sub-convert functions depending on the value of pu_mode.
 
@@ -129,19 +166,33 @@ def cnv_img(pu_mode, pu_src_file, pu_dst_file, po_random_precfg):
     :return:
     """
 
-    o_src_file = files.FilePath(pu_src_file)
-
-    if not o_src_file.has_exts(*lu_VALID_EXTS):
-        raise ValueError('Not a valid src file extension (%s); valid ones are %s.' % (o_src_file.u_ext,
-                                                                                      str(lu_VALID_EXTS)))
+    if not po_src_file.has_exts(*tu_VALID_EXTS):
+        raise ValueError('Not a valid src file extension (%s); valid ones are %s.' % (po_src_file.u_ext,
+                                                                                      str(tu_VALID_EXTS)))
     else:
         o_cfg = po_random_precfg.randomize()
 
+        # Extension change if it's forced
+        if o_cfg.u_format:
+            po_dst_file.u_ext = po_random_precfg.u_format
+
         # Automatic aspect ratio (zero in any of the aspect ratios x,y) fixing
-        if 0.0 in o_cfg.ti_aspect:
-            o_img = Image.open(pu_src_file, 'r')
-            o_cfg.ti_aspect = o_img.size
-            o_img.close()
+        if 0.0 in o_cfg.tf_aspect:
+            o_cfg.tf_aspect = _img_get_size(po_src_file.u_path)
+
+        # Aspect ratio "inversion" if the image is rotated
+        ti_src_img_size = _img_get_size(po_src_file.u_path)
+
+        b_src_img_landscape = True
+        if ti_src_img_size[0] < ti_src_img_size[1]:
+            b_src_img_landscape = False
+
+        b_cfg_ratio_landscape = True
+        if o_cfg.tf_aspect[0] < o_cfg.tf_aspect[1]:
+            b_cfg_ratio_landscape = False
+
+        if b_src_img_landscape ^ b_cfg_ratio_landscape:
+            o_cfg.tf_aspect = (o_cfg.tf_aspect[1], o_cfg.tf_aspect[0])
 
         # Error handling code
         if pu_mode not in tu_CNV_MODES:
@@ -149,20 +200,24 @@ def cnv_img(pu_mode, pu_src_file, pu_dst_file, po_random_precfg):
 
         # Calling to sub-functions
         elif pu_mode == 'frame':
-            o_transformation = _cnv_frame(pu_src_file, pu_dst_file, o_cfg)
+            o_transformation = _cnv_frame(po_src_file, po_dst_file, o_cfg)
+        elif pu_mode == 'magcover':
+            o_transformation = _cnv_magcover(po_src_file, po_dst_file, o_cfg)
+
+        o_transformation.o_path = po_dst_file
 
     return o_transformation
 
 
-def _cnv_frame(pu_src_file, pu_dst_file, po_cfg):
+def _cnv_frame(po_src_file, po_dst_file, po_cfg):
     """
     Image conversion that adds a picture frame around the image and soft reflections.
 
     Focus point is used to set the center of the reflection image.
 
-    :param pu_src_file: Input file. i.e. '/home/john/original_picture.jpg'
+    :param po_src_file: Input file. i.e. '/home/john/original_picture.jpg'
 
-    :param pu_dst_file: Output file. i.e. '/home/john/modified_picture.png'
+    :param po_dst_file: Output file. i.e. '/home/john/modified_picture.png'
 
     :param po_cfg: Configuration object. See hq_img_convert to see
 
@@ -172,14 +227,16 @@ def _cnv_frame(pu_src_file, pu_dst_file, po_cfg):
 
     # Media preparation
     #------------------
-    u_img_light = os.path.join(u_MEDIA_ROOT, 'frame', 'brightness.png')
-    u_img_light = os.path.abspath(u_img_light)
-    u_img_light = u_img_light.decode('utf8')
+    o_img_light = files.FilePath(u_MEDIA_ROOT, 'frame', 'brightness.png')
+    o_img_light.absfile()
+    u_img_light = o_img_light.u_path.decode('utf8')
 
     # Variables preparation for imagemagick command
     #----------------------------------------------
-    ti_img_size = geom.max_in_rect(po_cfg.ti_size, po_cfg.ti_aspect)
+    ti_img_size = geom.max_in_rect(po_cfg.ti_size, po_cfg.tf_aspect)
     i_light_size = 2 * max(ti_img_size[0], ti_img_size[1])
+    f_aspect_ratio = po_cfg.tf_aspect[0] / po_cfg.tf_aspect[1]
+    f_gb_aspect_ratio = 160.0 / 144.0
 
     # Real location (x,y) in pixels of the focus point of the image
     ti_focus = (int(po_cfg.tf_focus[0] * ti_img_size[0]), int(po_cfg.tf_focus[1] * ti_img_size[1]))
@@ -215,10 +272,18 @@ def _cnv_frame(pu_src_file, pu_dst_file, po_cfg):
     f_sin = math.sin(math.radians(po_cfg.f_rotation))
     f_cos = math.cos(math.radians(po_cfg.f_rotation))
 
+    # Number of image colors to colorize gameboy screenshots
+    i_colors = _img_count_colors(po_src_file.u_path)
+    b_grayscale = _img_is_grayscale(po_src_file.u_path)
+
     # Command line build
     #-------------------
     u_cmd = u'convert '
-    u_cmd += u'"%s" ' % pu_src_file                                                          # Source file
+    u_cmd += u'"%s" ' % po_src_file.u_path                                                   # Source file
+
+    if f_aspect_ratio == f_gb_aspect_ratio and i_colors <= 4 and b_grayscale:                # GameBoy (mono) color tint
+        u_cmd += u'+level-colors "#0f380e,#9bbb0e" '
+
     u_cmd += u'-resize %ix%i! ' % (ti_img_size[0], ti_img_size[1])                           # Resizing
     u_cmd += u'-background transparent '                                                     # Transparent background
 
@@ -234,8 +299,8 @@ def _cnv_frame(pu_src_file, pu_dst_file, po_cfg):
                                                                         i_shadow_dist)       # Shadow creation
     u_cmd += u'-reverse -background none -layers merge +repage '                             # Shadow composition
 
-    u_cmd += u'-background "%s" -flatten ' % po_cfg.u_bgcolor                                # Background color
-    u_cmd += u'"%s" ' % pu_dst_file                                                          # Output file
+    u_cmd += u'-background "#%s" -flatten ' % po_cfg.u_bgcolor                               # Background color
+    u_cmd += u'"%s"' % po_dst_file.u_path                                                    # Output file
 
     # Command line execution
     #-----------------------
@@ -246,9 +311,7 @@ def _cnv_frame(pu_src_file, pu_dst_file, po_cfg):
 
     # Coordinates calculation after image manipulation
     #-------------------------------------------------
-    o_img = Image.open(pu_dst_file, 'r')
-    ti_img_size = o_img.size
-    o_img.close()
+    ti_img_size = _img_get_size(po_dst_file.u_path)
 
     i_extra_top = max(0, i_shadow_blur - i_shadow_dist)
     i_extra_bottom = max(0, i_shadow_blur + i_shadow_dist)
@@ -270,7 +333,7 @@ def _cnv_frame(pu_src_file, pu_dst_file, po_cfg):
     tf_top_left = (tf_top[0] - tf_dx[0], tf_top[1] + tf_dx[1])
     tf_top_right = (tf_top[0] + tf_dx[0], tf_top[1] - tf_dx[1])
 
-    # Relative (0.0 to 1.0) offsets of image key-positions
+    # Transformation object result
     o_img_transformation = ImgKeyCoords()
     o_img_transformation.ti_size = ti_img_size
     o_img_transformation.tf_top_left = (tf_top_left[0] / ti_img_size[0], tf_top_left[1] / ti_img_size[1])
@@ -289,14 +352,65 @@ def _cnv_frame(pu_src_file, pu_dst_file, po_cfg):
     return o_img_transformation
 
 
+def _cnv_magcover(po_src_file, po_dst_file, po_cfg):
+    """
+    :param po_src_file:
+    :param po_dst_file:
+    :param po_cfg:
+    :return:
+    """
+
+    # Media preparation
+    #------------------
+    o_img_light = files.FilePath(u_MEDIA_ROOT, 'magcover', 'brightness.png')
+    o_img_light.absfile()
+    u_img_light = o_img_light.u_path.decode('utf8')
+
+    # Variables preparation
+    #----------------------
+    ti_img_size = geom.max_in_rect(po_cfg.ti_size, po_cfg.ti_aspect)
+
+    # Command line build
+    #-------------------
+    u_cmd = u'convert '
+    u_cmd += u'"%s" ' % po_src_file.u_path                                                   # Source file
+    u_cmd += u'-resize %ix%i! ' % (ti_img_size[0], ti_img_size[1])                           # Resizing
+    u_cmd += u'-background transparent '                                                     # Transparent background
+
+    u_cmd += u'\( "%s" -resize %ix%i! -geometry %s \) -composite ' % (u_img_light,
+                                                                      i_light_size,
+                                                                      i_light_size,
+                                                                      u_foc_img_off)         # Light/shadow add
+
+
+# HELPER GENERIC FUNCTIONS
+#=======================================================================================================================
+def _is_valid_tuple(tx_tuple, pi_dim, *p_type):
+    """
+    Function to check if a tuple has the right dimension and the right type values.
+    """
+    b_is_valid = False
+
+    if isinstance(tx_tuple, tuple) and len(tx_tuple) == pi_dim:
+        i_valid_elems = 0
+        for x_elem in tx_tuple:
+            if isinstance(x_elem, p_type):
+                i_valid_elems += 1
+
+        if i_valid_elems == pi_dim:
+            b_is_valid = True
+
+    return b_is_valid
+
+
 # HELPER IMAGE FUNCTIONS
 #=======================================================================================================================
-def _draw_coordinates(u_img, o_img_transform):
+def _draw_coordinates(o_img_file, o_img_transform):
     """
     Function to show the location of the image transform points over the image and the regions defined by them using
     overlay colors.
 
-    :param u_img: File name of the image. i.e. "/home/john/picture.png"
+    :param o_img_file: ImageFile object as defined in files.py. i.e. "/home/john/picture.png"
 
     :param o_img_transform: ImageTransformation object containing the image's key-coordinates.
 
@@ -325,7 +439,7 @@ def _draw_coordinates(u_img, o_img_transform):
 
     # Imagemagick command for sectors overlaying
     u_cmd = u'convert '
-    u_cmd += u'%s ' % u_img
+    u_cmd += u'%s ' % o_img_file.u_path
 
     u_cmd += u'-stroke lime -fill "#ff000080" '
     u_cmd += u'-draw "polygon %s %s %s %s" ' % (u_tl, u_t, u_c, u_l)
@@ -339,7 +453,7 @@ def _draw_coordinates(u_img, o_img_transform):
     u_cmd += u'-stroke lime -fill "#ff00ff80" '
     u_cmd += u'-draw "polygon %s %s %s %s" ' % (u_c, u_r, u_br, u_b)
 
-    u_cmd += u'%s' % u_img
+    u_cmd += u'%s' % o_img_file.u_path
 
     cmd.execute(u_cmd)
 
@@ -356,3 +470,90 @@ def _randomize(pf_x, pf_dx):
     """
     f_output = pf_x + pf_dx * random.choice((1.0, -1.0)) * random.random()
     return f_output
+
+
+def _img_count_colors(pu_image):
+    """
+    Function to count the number of colors of an image using imagemagick "identify" tool.
+    :param pu_image: File name of the image. i.e. "/home/john/picture.gif"
+    :return: An integer representing the number of colors. i.e. 4.
+    """
+
+    # TODO: Check problematic files.
+    # In certain circumstances, an image with 4 colors can contain unused colors (256 color images) and apparently the
+    # command below don't check the actual colors used but the color depth of the image. This program MUST obtain the
+    # number of colors actually used in the image.
+
+    u_cmd = u'identify -format %%k "%s"' % pu_image
+    du_output = cmd.execute(u_cmd)
+    i_colors = int(du_output['u_stdout'])
+
+    return i_colors
+
+
+def _img_is_grayscale(pu_image):
+    """
+    Function to check if an image is a pure greyscale image using imagemagick.
+    :param pu_image: File name
+    :return: True if the image is greyscale.
+    """
+
+    u_cmd = u'convert "%s" -colorspace HSL -verbose info:' % pu_image
+    du_output = cmd.execute(u_cmd)
+
+    # The output of the above command gives information about RGB channels but actually they are HSL. According to
+    # http://www.imagemagick.org/discourse-server/viewtopic.php?t=19580, we're interested in the "green" (saturation)
+    # channel. The information to parse is:
+    #
+    #     ...
+    #     Green:
+    #       min: 0 (0)
+    #       max: 0 (0)
+    #       mean: 0 (0)
+    #       standard deviation: 0 (0)
+    #       kurtosis: 0
+    #       skewness: 0
+    #     Blue:
+    #     ...
+    #
+    # If max is 0, the image is 100% greyscale.
+    i_start = du_output['u_stdout'].find('Green:') + len('Green:')
+    i_end = du_output['u_stdout'].find('Blue:')
+    u_green_info = du_output['u_stdout'][i_start:i_end]
+
+    lu_green_info = u_green_info.splitlines()
+
+    b_info_found = False
+
+    for u_line in lu_green_info:
+        if 'max:' in u_line:
+            b_info_found = True
+            i_max = int(u_line.split()[1])
+
+    if b_info_found:
+        if i_max == 0:
+            b_grayscale = True
+        else:
+            b_grayscale = False
+
+        return b_grayscale
+
+    else:
+        raise IOError('Te file provided doesn\'t seem to be a valid image for imagemagick: %s' % pu_image)
+
+
+def _img_get_size(pu_image):
+    """
+    Function to get the size of an image file.
+    :param pu_image: Image file. i.e. '/home/john/my_face.jpg'
+    :return: A tuple of integers with width and height. i.e. (640, 480)
+    """
+
+    u_cmd = u'identify -format %%G "%s"' % pu_image
+    du_output = cmd.execute(u_cmd)
+
+    # The standard output of the command above is widthxheight. i.e. 640x906. So, it's easy to parse.
+    i_width = int(du_output['u_stdout'].partition('x')[0])
+    i_height = int(du_output['u_stdout'].partition('x')[2])
+
+    return i_width, i_height

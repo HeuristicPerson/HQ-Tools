@@ -16,40 +16,24 @@ class Coord():
     like "Coord" and "Coords". "Coord" to store one coordinate (x axis, for example) and its delta and "Coords" to store
     the group of 3 or more axis.
     """
-    def __init__(self, pf_x=0.0, pf_dx=0.0, pf_y=0.0, pf_dy=0.0):
-        self.f_x = pf_x
-        self.f_dx = pf_dx
-        self.f_y = pf_y
-        self.f_dy = pf_dy
+    def __init__(self, pu_string=None):
+        self.f_x = None
+        self.f_dx = None
+        self.f_y = None
+        self.f_dy = None
+
+        try:
+            tf_parsed_numbers = _parse_coords_chunk(pu_string)
+            self.f_x = tf_parsed_numbers[0]
+            self.f_dx = tf_parsed_numbers[1]
+            self.f_y = tf_parsed_numbers[2]
+            self.f_dy = tf_parsed_numbers[3]
+        except ValueError:
+            raise ValueError
 
     def __str__(self):
         u_output = u'<Coord: x+dx = %s+%s  y+dy = %s+%s>' % (self.f_x, self.f_dx, self.f_y, self.f_dy)
         return u_output.encode('ascii')
-
-    def from_str(self, pu_str):
-        """
-        Method to populate the coordinates from a string with the format x±dx,y±dy.
-        """
-
-        self.f_x, self.f_dx, self.f_y, self.f_dy = _parse_coords_chunk(pu_str)
-
-
-def is_valid_coord_string(pu_string):
-    """
-    Function to check if a string is a valid coordinates string.
-
-    :param pu_string: Coordinate string. i.e. "1+4,4-0.5". The coordinates are x±dx,y±dy, where x,y are the standard
-                      horizontal-vertical coordinates and dx,dy are deltas to x,y coordinates.
-
-    :return: True if the string is a valid coordinate string, False in other case.
-    """
-    try:
-        f_x, f_dx, f_y, f_dy = _parse_coords_chunk(pu_string)
-        b_is_valid_coord_string = True
-    except ValueError:
-        b_is_valid_coord_string = False
-
-    return b_is_valid_coord_string
 
 
 def _parse_coords_chunk(pu_coords_chunk):

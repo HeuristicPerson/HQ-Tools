@@ -3,11 +3,13 @@
 Installation
 ============
 
-1. Download the latest version of HQ Tools from [github.com/PixelGordo/HQ-Tools](https://github.com/PixelGordo/HQ-Tools) 
+1. Download the latest version of HQ Tools from [github.com/PixelGordo/HQ-Tools](1) 
 
 2. Uncompress the package wherever you want.
 
 3. Create
+
+    [1]: https://github.com/PixelGordo/HQ-Tools
 
 HQ Copy (hq_copy.py)
 ====================

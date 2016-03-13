@@ -17,10 +17,8 @@ import libs
 u_PROG_NAME = u'HQ IMAGE CONVERT'
 u_PROG_VER = u'v2016.02.21'
 
-tu_MODES = ('frame',)
-
 o_CWD = libs.files.get_cwd()
-o_IMG_CONV_DEF_CFG = libs.imagemagick.ImgConvertRandomCfg()
+o_IMG_CONV_DEF_CFG = libs.imagemagick.ImgConvCfgGenerator()
 
 
 # HELPER FUNCTIONS
@@ -57,7 +55,7 @@ def _get_cmd_options():
                                                        'screenshots.')
     o_arg_parser.add_argument('mode',
                               action='store',
-                              choices=tu_MODES,
+                              choices=libs.imagemagick.tu_CNV_MODES,
                               help='Image mode. i.e. "frame".')
     o_arg_parser.add_argument('src',
                               action='store',
@@ -68,16 +66,26 @@ def _get_cmd_options():
     o_arg_parser.add_argument('-a',
                               action='store',
                               default='0,0',
-                              help='Aspect ratio or platform alias. i.e. "16,9" or "nes". Valid platform alias are: %s.'
-                                   % u_platforms)
+                              help='Aspect ratio or platform alias. i.e. "-a 16,9" or "-a nes". Valid platform alias '
+                                   'are: %s.' % u_platforms)
+    o_arg_parser.add_argument('-e',
+                              action='store',
+                              default=None,
+                              choices=(None,) + libs.imagemagick.tu_VALID_EXTS,
+                              help='Change dst extension. i.e. "-e jpg" will create a jpg image. If you are converting '
+                                   'a single file, you can simply define the extension by the output file name. For '
+                                   'example "output.png" will produce a png file. When you are converting a whole '
+                                   'directory of images, the output file name for each of the files will be the source'
+                                   'file name; so the parameter "-e" allows you to change the extension.')
     o_arg_parser.add_argument('-f',
                               action='store',
                               default='0,0',
-                              help='Focus point relative coordinates x,y. i.e. "0.0,1.0" would be bottom-left corner.')
+                              help='Focus point relative coordinates x,y. i.e. "-f 0.0,1.0" would be bottom-left '
+                                   'corner.')
     o_arg_parser.add_argument('-b',
                               action='store',
                               default='#808080ff',
-                              help='Background hex color in RGBA format. i.e. "ff000080".')
+                              help='Background hex color in RGBA format. i.e. "-b ff000080".')
     o_arg_parser.add_argument('-r',
                               action='store',
                               default='0+0',
@@ -101,7 +109,7 @@ def _get_cmd_options():
     # Mode
     #-----
     u_mode = o_args.mode
-    if u_mode in tu_MODES:
+    if u_mode in libs.imagemagick.tu_CNV_MODES:
         u_mode_found = libs.cons.u_OK_TEXT
     else:
         i_cmd_errors += 1
@@ -151,24 +159,36 @@ def _get_cmd_options():
 
     u_output += u'    DST: %s\n' % u_msg
 
+    # Graphical configuration
+    #========================
+    o_graph_cfg = libs.imagemagick.ImgConvCfgGenerator()
+
     # Aspect ratio
     #-------------
     u_aspect = o_args.a.strip()
-    o_aspect = None
 
-    if u_aspect is not None and libs.geom.is_valid_coord_string(u_aspect):
-        o_aspect = libs.geom.Coord()
-        o_aspect.from_str(u_aspect)
-        if o_aspect.f_x and o_aspect.f_y != 0:
-            u_msg = u'%s %i:%i' % (libs.cons.u_OK_TEXT, o_aspect.f_x, o_aspect.f_y)
+    if u_aspect is not None:
+        if u_aspect in libs.cons.do_platforms:
+            o_graph_cfg.tf_aspect = u_aspect
+            o_platform = libs.cons.do_platforms[u_aspect]
+            u_msg = u'%s %s (%.2f, %.2f)' % (libs.cons.u_OK_TEXT, u_aspect, o_platform.i_WIDTH, o_platform.i_HEIGHT)
         else:
-            u_msg = u'%s %i:%i  (Any 0 => automatic)' % (libs.cons.u_OK_TEXT, o_aspect.f_x, o_aspect.f_y)
-            #todo: Add code to get aspect ratio from shortcuts with console alias. i.e. "snes" -> 4:3
+            try:
+                o_aspect = libs.geom.Coord(pu_string=u_aspect)
+                o_graph_cfg.tf_aspect = (o_aspect.f_x, o_aspect.f_y)
+                if o_aspect.f_x and o_aspect.f_y != 0:
+                    u_msg = u'%s %.2f:%.2f' % (libs.cons.u_OK_TEXT, o_aspect.f_x, o_aspect.f_y)
+                else:
+                    u_msg = u'%s %.2f:%.2f  (Any 0 => automatic)' % (libs.cons.u_OK_TEXT, o_aspect.f_x, o_aspect.f_y)
+            except ValueError:
+                    u_msg = u'%s %s - Unknown aspect format' % (libs.cons.u_ER_TEXT, u_aspect)
+
     elif u_aspect is None:
         u_msg = u'%s automatic (same as source image)' % libs.cons.u_OK_TEXT
+
     else:
         i_cmd_errors += 1
-        u_msg = u'%s %s' % (libs.cons.u_ER_TEXT, u_aspect)
+        u_msg = u'%s %s - Unknown aspect format' % (libs.cons.u_ER_TEXT, u_aspect)
 
     u_output += u'\n  G_ASP: %s\n' % u_msg
 
@@ -177,6 +197,7 @@ def _get_cmd_options():
     u_bgcolor = o_args.b.strip()
 
     if u_bgcolor.lower() == _parse_color(u_bgcolor):
+        o_graph_cfg.u_bgcolor = u_bgcolor
         u_msg = u'%s %s' % (libs.cons.u_OK_TEXT, u_bgcolor)
     else:
         i_cmd_errors += 1
@@ -184,16 +205,26 @@ def _get_cmd_options():
 
     u_output += u'  G_BGC: %s\n' % u_msg
 
+    # Extension
+    #----------
+    u_ext = o_args.e
+    if u_ext:
+        o_graph_cfg.u_format = u_ext
+        u_msg = u'%s %s' % (libs.cons.u_OK_TEXT, u_ext)
+    else:
+        u_msg = u'%s automatic' % libs.cons.u_OK_TEXT
+
+    u_output += u'  G_EXT: %s\n' % u_msg
+
     # Focus
     #------
     u_focus = o_args.f.strip()
-    o_focus = None
 
-    if libs.geom.is_valid_coord_string(u_focus):
-        o_focus = libs.geom.Coord()
-        o_focus.from_str(u_focus)
-        u_msg = u'%s %s±%s, %s±%s' % (libs.cons.u_OK_TEXT, o_focus.f_x, o_focus.f_dx, o_focus.f_y, o_focus.f_dy)
-    else:
+    try:
+        o_focus = libs.geom.Coord(pu_string=u_focus)
+        o_graph_cfg.tf_focus = (o_focus.f_x, o_focus.f_y, o_focus.f_dx, o_focus.f_dy)
+        u_msg = u'%s %.2f±%.2f, %.2f±%.2f' % (libs.cons.u_OK_TEXT, o_focus.f_x, o_focus.f_dx, o_focus.f_y, o_focus.f_dy)
+    except ValueError:
         i_cmd_errors += 1
         u_msg = u'%s %s - Unknown format' % (libs.cons.u_ER_TEXT, u_focus)
 
@@ -202,13 +233,12 @@ def _get_cmd_options():
     # Rotation
     #---------
     u_rotation = o_args.r.strip()
-    o_rotation = None
 
-    if libs.geom.is_valid_coord_string(u_rotation):
-        o_rotation = libs.geom.Coord()
-        o_rotation.from_str(u_rotation)
-        u_msg = u'%s %s±%sº' % (libs.cons.u_OK_TEXT, o_rotation.f_x, o_rotation.f_dx)
-    else:
+    try:
+        o_rotation = libs.geom.Coord(pu_string=u_rotation)
+        o_graph_cfg.tf_rotation = (o_rotation.f_x, o_rotation.f_dx)
+        u_msg = u'%s %.2f±%.2fº' % (libs.cons.u_OK_TEXT, o_rotation.f_x, o_rotation.f_dx)
+    except ValueError:
         i_cmd_errors += 1
         u_msg = u'%s %s - Unknown format' % (libs.cons.u_ER_TEXT, u_rotation)
 
@@ -217,34 +247,20 @@ def _get_cmd_options():
     # Size
     #-----
     u_size = o_args.s.strip()
-    o_size = None
 
-    if libs.geom.is_valid_coord_string(u_size):
-        o_size = libs.geom.Coord()
-        o_size.from_str(u_size)
+    try:
+        o_size = libs.geom.Coord(pu_string=u_size)
+        o_graph_cfg.ti_size = (int(o_size.f_x), int(o_size.f_y), int(o_size.f_dx), int(o_size.f_dy))
         if (o_size.f_x >= 1) and (o_size.f_y >= 1):
             u_msg = u'%s %i±%i x %i±%i px' % (libs.cons.u_OK_TEXT, o_size.f_x, o_size.f_dx, o_size.f_y, o_size.f_dy)
         else:
             i_cmd_errors += 1
             u_msg = u'%s %ix%i - Both sizes need to be bigger than 1' % (libs.cons.u_ER_TEXT, o_size.f_x, o_size.f_y)
-    else:
+    except ValueError:
         i_cmd_errors += 1
         u_msg = u'%s %s - '
 
     u_output += u'  G_SIZ: %s\n' % u_msg
-
-    # Preparing the graphical configuration object
-    #---------------------------------------------
-    o_graph_cfg = libs.imagemagick.ImgConvertRandomCfg()
-    o_graph_cfg.u_bgcolor = u_bgcolor
-    if o_aspect:
-        o_graph_cfg.ti_aspect = (int(o_aspect.f_x), int(o_aspect.f_y))
-    if o_focus:
-        o_graph_cfg.tf_focus = (o_focus.f_x, o_focus.f_y, o_focus.f_dx, o_focus.f_dy)
-    if o_rotation:
-        o_graph_cfg.tf_rotation = (o_rotation.f_x, o_rotation.f_dx)
-    if o_size:
-        o_graph_cfg.ti_size = (int(o_size.f_x), int(o_size.f_y), int(o_size.f_dx), int(o_size.f_dy))
 
     print u_output
 
@@ -263,19 +279,19 @@ def _parse_color(pu_string):
     Function to check if a string contains a valid RGB(A) hexadecimal color.
     :return: True/False
     """
-    u_pattern = r'(#[0-9a-f]{8})|(#[0-9a-f]{6})'
+    u_pattern = r'([0-9a-f]{8})|([0-9a-f]{6})'
     o_match = re.search(u_pattern, pu_string, flags=0)
     return o_match.group()
 
 
-def img_convert(pu_mode=None, pu_src_file=None, pu_dst_file=None, po_cfg=o_IMG_CONV_DEF_CFG):
+def img_convert(pu_mode=None, po_src_file=None, po_dst_file=None, po_cfg=o_IMG_CONV_DEF_CFG):
 
     # I think that for code organization it'd be a better idea to make this function just a wrapper of a function
     # located in imagemagick. That way, I could add the available transformations (frame, sphere, magcover...) list in
-    # there. So, everytime I neede to define a new transformation, I'd just need to modify that file.
-    o_src_file = libs.files.FilePath(pu_src_file)
+    # there. So, every time I need to define a new transformation, I'd just need to modify that file.
 
-    o_output = libs.imagemagick.cnv_img(pu_mode, pu_src_file, pu_dst_file, po_cfg)
+    o_output = libs.imagemagick.cnv_img(pu_mode, po_src_file, po_dst_file, po_cfg)
+
     return o_output
 
 # Main Code
@@ -286,7 +302,6 @@ if __name__ == '__main__':
     dx_cmd_args = _get_cmd_options()
 
     # If src/dst and directories, the list of files inside src dir will be obtained and processed.
-    # TODO: Filter out files that are not images
     lo_src_files = []
     lo_dst_files = []
 
@@ -298,24 +313,34 @@ if __name__ == '__main__':
             if o_src_file.is_file():
                 lo_src_files.append(o_src_file)
 
+                # If src and dst are directories, the final dst files will be called like the source files but they will
+                # have a different root directory
                 o_dst_file = libs.files.FilePath(dx_cmd_args['o_dst'].u_path, o_src_file.u_file)
                 lo_dst_files.append(o_dst_file)
 
     # Image processing
     print 'Processing'
     print '-----------------------------------------'
+
+    i_image = 0
+
     for o_src_file, o_dst_file in zip(lo_src_files, lo_dst_files):
 
-        print 'WRITING: %s %s' % (libs.cons.u_PR_TEXT, o_dst_file.u_path),
+        i_image += 1
 
-        o_key_coords = img_convert(pu_mode=dx_cmd_args['u_mode'],
-                                   pu_src_file=o_src_file.u_path,
-                                   pu_dst_file=o_dst_file.u_path,
-                                   po_cfg=dx_cmd_args['o_cfg'])
+        u_output = u'WORKING: %s [%i/%i] %s' % (libs.cons.u_PR_TEXT, i_image, len(lo_src_files), o_src_file.u_path)
+        print u_output.encode('utf8'),
 
-        if o_key_coords:
+        o_transformation_result = img_convert(pu_mode=dx_cmd_args['u_mode'],
+                                              po_src_file=o_src_file,
+                                              po_dst_file=o_dst_file,
+                                              po_cfg=dx_cmd_args['o_cfg'])
+
+        if o_transformation_result:
             u_result_text = libs.cons.u_OK_TEXT
         else:
             u_result_text = libs.cons.u_ER_TEXT
 
-        print '\rCREATED: %s %s' % (u_result_text, o_dst_file.u_path)
+        u_output = u'\rCREATED: %s [%i/%i] %s' % (u_result_text, i_image,
+                                                  len(lo_src_files), o_transformation_result.o_path.u_path)
+        print u_output.encode('utf8')

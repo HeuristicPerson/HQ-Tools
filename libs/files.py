@@ -5,7 +5,9 @@ Library with file tools.
 import os
 
 
-class FilePath:
+# IMPORTANT COMMENT: In order to make @property and setters work, you need to define the class using OBJECT between
+# parenthesis or it won't work
+class FilePath(object):
     """
     Class to handle file information: FilePath name, root, extension, etc...
     """
@@ -15,17 +17,36 @@ class FilePath:
         self.u_root = os.path.dirname(self.u_path)
         self.u_file = os.path.basename(self.u_path)
         self.u_name = self.u_file.rpartition('.')[0]
-        self.u_ext = self.u_file.rpartition('.')[2]
+        self._u_ext = self.u_file.rpartition('.')[2]
 
     def __str__(self):
-        u_output = u'[FilePath]\n'
-        u_output += u'  Path: %s\n' % self.u_path
-        u_output += u'  Root: %s\n' % self.u_root
-        u_output += u'  FilePath: %s\n' % self.u_file
-        u_output += u'  Name: %s\n' % self.u_name
-        u_output += u'   Ext: %s\n' % self.u_ext
+        u_output = u'<FilePath>\n'
+        u_output += u'  .u_path: %s\n' % self.u_path
+        u_output += u'  .u_root: %s\n' % self.u_root
+        u_output += u'  .u_file: %s\n' % self.u_file
+        u_output += u'  .u_name: %s\n' % self.u_name
+        u_output += u'  .u_format:  %s\n' % self.u_ext
 
         return u_output.encode('utf8')
+
+    # I don't totally agree that properties + setters/getters are that better. In one one, it's true that your class
+    # code will look cleaner since you won't be creating as many set_x, set_y functions. But, on the other hand, when
+    # you modify your instances from outside, IT'S NOT CLEAR AT ALL THAT YOU ARE ACTUALLY CALLING A METHOD INSTEAD OF
+    # SIMPLY MODIFYING ONE SINGLE PROPERTY.
+    #
+    # But apparently it's the way it should be. Read, for example:
+    #
+    #     http://2ndscale.com/rtomayko/2005/getters-setters-fuxors
+
+    def get_u_ext(self):
+        return self._u_ext
+
+    def set_u_ext(self, u_new_ext):
+        self._u_ext = u_new_ext
+        self.u_file = u'%s.%s' % (self.u_name, u_new_ext)
+        self.u_path = os.path.join(self.u_root, self.u_file)
+
+    u_ext = property(get_u_ext, set_u_ext)
 
     def absfile(self):
         """
