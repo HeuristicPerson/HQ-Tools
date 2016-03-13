@@ -103,6 +103,7 @@ Optional arguments:
 
 * `-r R`              Image rotation. i.e. `-r 15+5` will be a rotation of 15 degrees anticlockwise plus a random
                       rotation of +/- 5 degrees.
+
 * `-s S`              Image size. i.e. `-s 320,240`. This is the maximum image size. Images will be enlarged or reduced
                       maintaining their aspect ratio until they occupy the maximum possible area of the area defined by
                       this parameter. i.e. a square image which is 30x30 pixels with a size parameter of `-s 100,200`
