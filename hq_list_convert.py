@@ -11,6 +11,7 @@ import sys
 
 import libs
 from hqlib import romdats
+from libs import lst_cnv
 
 # CONSTANTS
 #=======================================================================================================================
@@ -167,20 +168,22 @@ def _list_parse_wahcade(o_list_file, o_dat):
 
 # MAIN FUNCTION
 #=======================================================================================================================
-def hq_lconvert(u_src_fmt=None, u_dst_fmt=None, u_src_file=None, u_dst_file=None, u_dat=None, b_print=False):
+def hq_lconvert(pu_src_fmt=None, pu_dst_fmt=None, pu_src_file=None, pu_dst_file=None, pu_dat=None, pb_print=False):
     """
     Function to convert list files between different front-end formats.
-    :param u_src_fmt:
-    :param u_dst_fmt:
-    :param u_src_file:
-    :param u_dst_file:
-    :param b_print:
+    :param pu_src_fmt:
+    :param pu_dst_fmt:
+    :param pu_src_file:
+    :param pu_dst_file:
+    :param pb_print:
     :return:
     """
 
+    # TODO: This function will be just a wrapper for the actual function in lst_cnv
+
     # Parameter validation
 
-    lu_games = _list_parse(u_src_file, u_src_fmt, o_dat)
+    lu_games = _list_parse(pu_src_file, pu_src_fmt, o_dat)
 
     return 'foo'
 
@@ -199,8 +202,8 @@ if __name__ == '__main__':
 
     print o_dat
 
-    dx_result = hq_lconvert(u_src_fmt=dx_cmd_params['u_src_format'],
-                            u_dst_fmt=dx_cmd_params['u_dst_format'],
-                            u_src_file=dx_cmd_params['o_src_list'].u_path)
+    dx_result = hq_lconvert(pu_src_fmt=dx_cmd_params['u_src_format'],
+                            pu_dst_fmt=dx_cmd_params['u_dst_format'],
+                            pu_src_file=dx_cmd_params['o_src_list'].u_path)
 
 

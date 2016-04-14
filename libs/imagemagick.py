@@ -157,9 +157,9 @@ def cnv_img(pu_mode, po_src_file, po_dst_file, po_random_precfg):
 
     :param pu_mode: Mode of image conversion. i.e. 'frame'
 
-    :param pu_src_file: Source file for conversion. i.e. '/home/john/original_picture.jpg'
+    :param po_src_file: Source file for conversion. i.e. '/home/john/original_picture.jpg'
 
-    :param pu_dst_file: Destination file for conversion. i.e. '/home/john/final_picture.jpg'
+    :param po_dst_file: Destination file for conversion. i.e. '/home/john/final_picture.jpg'
 
     :param po_random_precfg: Configuration object with main options for conversion (size, rotation, grab point...)
 
@@ -362,25 +362,171 @@ def _cnv_magcover(po_src_file, po_dst_file, po_cfg):
 
     # Media preparation
     #------------------
-    o_img_light = files.FilePath(u_MEDIA_ROOT, 'magcover', 'brightness.png')
-    o_img_light.absfile()
-    u_img_light = o_img_light.u_path.decode('utf8')
+    o_img_corner_fold = files.FilePath(u_MEDIA_ROOT, 'magcover', 'corner_fold.png')
+    o_img_corner_fold.absfile()
+    u_img_corner_fold = o_img_corner_fold.u_path.decode('utf8')
+
+    o_img_left_brightness = files.FilePath(u_MEDIA_ROOT, 'magcover', 'left_brightness.png')
+    o_img_left_brightness.absfile()
+    u_img_left_brightness = o_img_left_brightness.u_path.decode('utf8')
+
+    o_img_left_fold = files.FilePath(u_MEDIA_ROOT, 'magcover', 'left_fold_dark.png')
+    o_img_left_fold.absfile()
+    u_img_left_fold = o_img_left_fold.u_path.decode('utf8')
+
+    o_img_stp = files.FilePath(u_MEDIA_ROOT, 'magcover', 'staple.png')
+    o_img_stp.absfile()
+    u_img_stp = o_img_stp.u_path.decode('utf8')
+
+    # Trigonometric pre-calculations
+    #-------------------------------
+    f_sin = math.sin(math.radians(po_cfg.f_rotation))
+    f_cos = math.cos(math.radians(po_cfg.f_rotation))
 
     # Variables preparation
     #----------------------
-    ti_img_size = geom.max_in_rect(po_cfg.ti_size, po_cfg.ti_aspect)
+    ti_cvr_size_final = geom.max_in_rect(po_cfg.ti_size, po_cfg.tf_aspect)
+
+    # Staples
+    ti_stp_size_orig = _img_get_size(u_img_stp)
+    f_stp_pos_ratio = 0.049 * ti_cvr_size_final[0] / ti_cvr_size_final[1] + 0.220  # based in my quick statistical study
+    f_stp_paper_y_ratio = 0.043 * 2                                                # TODO: Use statistical study again
+
+    _i_stp_height = int(f_stp_paper_y_ratio * ti_cvr_size_final[1])
+    ti_stp_size_final = (int(1.0 * ti_stp_size_orig[0] * _i_stp_height / ti_stp_size_orig[1]),
+                         _i_stp_height)
+    i_stp_x = int(11.0 / 60.0 * ti_stp_size_final[0])
+
+    # Landscape covers will have just one staple while portrait ones will have 2
+    li_staples_y = []
+    if float(ti_cvr_size_final[0]) / ti_cvr_size_final[1] > 1.0:
+        li_staples_y.append(0.5 * ti_cvr_size_final[1] - 0.5 * _i_stp_height)
+    else:
+        li_staples_y.append(f_stp_pos_ratio * ti_cvr_size_final[1] - 0.5 * _i_stp_height)
+        li_staples_y.append((1 - f_stp_pos_ratio) * ti_cvr_size_final[1] - 0.5 * _i_stp_height)
+
+    # Left fold configuration
+    i_fold_size = math.ceil(0.025 * ti_cvr_size_final[0])
+
+    # Shadow configuration
+    i_shadow1_dist = math.ceil(0.01 * min(po_cfg.ti_size))
+    i_shadow1_opac = 70                                                                       # 0-100
+    i_shadow1_blur = math.ceil(0.0025 * max(po_cfg.ti_size))
+
+    i_shadow2_blur = 4 * i_shadow1_blur
+
+    # Left Brightness configuration
+    f_left_bright_mult = 0.5 * (1 + abs(f_sin))                                              # 0.5 at 90º, 1.0 at 0º
+
+    # Corner fold configuration
+    f_bottom_right_bright_mult = 0.1 * (1 + max(0, math.cos(math.radians(45 + po_cfg.f_rotation))))
+    i_corner_fold_size_final = int(0.06 * ti_cvr_size_final[0])
 
     # Command line build
     #-------------------
     u_cmd = u'convert '
-    u_cmd += u'"%s" ' % po_src_file.u_path                                                   # Source file
-    u_cmd += u'-resize %ix%i! ' % (ti_img_size[0], ti_img_size[1])                           # Resizing
-    u_cmd += u'-background transparent '                                                     # Transparent background
+    u_cmd += u'"%s" ' % po_src_file.u_path                                                 # Source file
+    u_cmd += u'-resize %ix%i! ' % (ti_cvr_size_final[0], ti_cvr_size_final[1])                         # Resizing
+    u_cmd += u'-background transparent '                                                   # Transparent background
 
-    u_cmd += u'\( "%s" -resize %ix%i! -geometry %s \) -composite ' % (u_img_light,
-                                                                      i_light_size,
-                                                                      i_light_size,
-                                                                      u_foc_img_off)         # Light/shadow add
+    # Left fold
+    # TODO: Make left fold shadow transitions to a left fold brightness for high rotation angles (>45º)
+    u_cmd += u'\( "%s" ' % u_img_left_fold
+    u_cmd += u'-fill Black -colorize 100%%,100%%,100%%,0%% '
+    u_cmd += u'-resize %ix%i! ' % (i_fold_size, ti_cvr_size_final[1])
+    u_cmd += u'-gravity NorthWest -extent %ix0 ' % ti_cvr_size_final[0]
+    u_cmd += u'-background "#808080" -flatten -background transparent '
+    u_cmd += u'\) -compose hardlight -composite '
+
+    # Left reflection
+    # TODO: Make reflection intensity (and shape?) change with rotation angle.
+    u_cmd += u'\( "%s" ' % u_img_left_brightness                                           # Left brightness
+    u_cmd += u'-resize %ix%i! ' % (ti_cvr_size_final[0], ti_cvr_size_final[1])             # Light add
+    u_cmd += u'-channel alpha -fx "%s * a" ' % f_left_bright_mult                          # Alpha channel modification
+    u_cmd += u'\) -composite '
+
+    # Bottom right corner fold reflection
+    u_cmd += u'-gravity SouthEast '
+    u_cmd += u'\( "%s" ' % u_img_corner_fold
+    u_cmd += u'-resize %ix%i! ' % (i_corner_fold_size_final, i_corner_fold_size_final)
+    u_cmd += u'-channel alpha -fx "%s * a" ' % f_bottom_right_bright_mult
+    u_cmd += u'\) -composite '
+    u_cmd += u'-gravity NorthWest '
+
+    # Staples
+    u_cmd += u'-gravity east -extent +%i+0 -gravity northwest ' % i_stp_x
+    for i_staple_y in li_staples_y:
+        u_cmd += u'\( "%s" ' % u_img_stp
+        u_cmd += u'-resize x%i ' % _i_stp_height
+        u_cmd += u'-geometry +0+%i ' % i_staple_y
+        u_cmd += u'\) -compose over -composite '
+
+    u_cmd += u'-rotate %f ' % -po_cfg.f_rotation
+
+    # Primary shadow
+    u_cmd += u'\( '
+    u_cmd += u'-clone 0 -background black '
+    u_cmd += u'-resize 100%% '
+    u_cmd += u'-shadow %ix%i+0+%i ' % (i_shadow1_opac, i_shadow1_blur, i_shadow1_dist)
+    u_cmd += u'\) '
+
+    # Secondary shadow
+    u_cmd += u'\( '
+    u_cmd += u'-clone 0 -background black '
+    u_cmd += u'-shadow 40x%i+0+0 ' % i_shadow2_blur
+    u_cmd += u'\) '
+
+    u_cmd += u'-reverse -background none -layers merge +repage '                           # Shadow composition
+
+    u_cmd += u'-background "#%s" -flatten ' % po_cfg.u_bgcolor                             # Background color
+    u_cmd += u'"%s"' % po_dst_file.u_path                                                  # Output file
+
+    # Command line execution
+    #-----------------------
+    du_output = cmd.execute(u_cmd)
+
+    if du_output['u_stderr']:
+        print du_output['u_stderr']
+
+    # Transformation object result
+    ti_final_size = _img_get_size(po_dst_file.u_path)
+    i_extra_top = max(0, i_shadow1_blur - i_shadow1_dist, i_shadow2_blur)
+    i_extra_bottom = max(0, i_shadow1_blur + i_shadow1_dist, i_shadow2_blur)
+
+    # Delta distances in rotated image in screen coordinates
+    tf_dx = (0.5 * f_cos * ti_cvr_size_final[0], -0.5 * f_sin * ti_cvr_size_final[0])
+    tf_dy = (-0.5 * f_sin * ti_cvr_size_final[1], -0.5 * f_cos * ti_cvr_size_final[1])
+
+    tf_center = (0.5 * ti_final_size[0] + i_stp_x * f_cos,
+                 0.5 * (ti_final_size[1] - i_extra_top - i_extra_bottom) + i_extra_top)
+    tf_left = (tf_center[0] - tf_dx[0], tf_center[1] - tf_dx[1])
+    tf_right = (tf_center[0] + tf_dx[0], tf_center[1] + tf_dx[1])
+    tf_top = (tf_center[0] + tf_dy[0], tf_center[1] + tf_dy[1])
+    tf_top_left = (tf_top[0] - tf_dx[0], tf_top[1] - tf_dx[1])
+    tf_top_right = (tf_top[0] + tf_dx[0], tf_top[1] + tf_dx[1])
+    tf_bottom = (tf_center[0] - tf_dy[0], tf_center[1] - tf_dy[1])
+    tf_bottom_left = (tf_bottom[0] - tf_dx[0], tf_bottom[1] - tf_dx[1])
+    tf_bottom_right = (tf_bottom[0] + tf_dx[0], tf_bottom[1] + tf_dx[1])
+
+    # Transformation object result
+    o_img_transformation = ImgKeyCoords()
+    o_img_transformation.ti_size = ti_final_size
+    o_img_transformation.tf_top_left = (tf_top_left[0] / ti_final_size[0], tf_top_left[1] / ti_final_size[1])
+    o_img_transformation.tf_top = (tf_top[0] / ti_final_size[0], tf_top[1] / ti_final_size[1])
+    o_img_transformation.tf_top_right = (tf_top_right[0] / ti_final_size[0], tf_top_right[1] / ti_final_size[1])
+    o_img_transformation.tf_left = (tf_left[0] / ti_final_size[0], tf_left[1] / ti_final_size[1])
+    o_img_transformation.tf_center = (tf_center[0] / ti_final_size[0], tf_center[1] / ti_final_size[1])
+    o_img_transformation.tf_right = (tf_right[0] / ti_final_size[0], tf_right[1] / ti_final_size[1])
+    o_img_transformation.tf_bottom_left = (tf_bottom_left[0] / ti_final_size[0],
+                                           tf_bottom_left[1] / ti_final_size[1])
+    o_img_transformation.tf_bottom = (tf_bottom[0] / ti_final_size[0], tf_bottom[1] / ti_final_size[1])
+    o_img_transformation.tf_bottom_right = (tf_bottom_right[0] / ti_final_size[0],
+                                            tf_bottom_right[1] / ti_final_size[1])
+
+    # Debug code to overlay image regions
+    #_draw_coordinates(po_dst_file, o_img_transformation)
+
+    return o_img_transformation
 
 
 # HELPER GENERIC FUNCTIONS

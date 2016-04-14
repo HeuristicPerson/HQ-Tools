@@ -122,3 +122,13 @@ def max_in_rect(ptf_rect=(0.0, 0.0), ptf_aspect=(0.0, 0.0)):
         tf_in_rect = (f_width_2, f_height_2)
 
     return tf_in_rect
+
+def t_sum(pt_tuple_1, pt_tuple_2):
+    """
+    Function to sum tuples by components.
+
+    :param pt_tuple_1:
+    :param pt_tuple_2:
+    :return:
+    """
+    # TODO
