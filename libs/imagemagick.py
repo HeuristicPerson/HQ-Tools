@@ -19,7 +19,7 @@ u_CWD = os.path.dirname(os.path.abspath(__file__))
 u_MEDIA_ROOT = os.path.join(u_CWD, '..', 'media')
 
 tu_VALID_EXTS = ('bmp', 'gif', 'jpg', 'png')
-tu_CNV_MODES = ('frame', 'magcover')
+tu_CNV_MODES = ('pixelate', 'frame', 'hbars', 'magcover', 'vbars')
 
 
 # CLASSES
@@ -199,10 +199,18 @@ def cnv_img(pu_mode, po_src_file, po_dst_file, po_random_precfg):
             raise ValueError('pu_mode must be one of the these: %s' % ', '.join(tu_CNV_MODES))
 
         # Calling to sub-functions
+        elif pu_mode == 'pixelate':
+            o_transformation = _cnv_pixelate(po_src_file, po_dst_file, o_cfg)
         elif pu_mode == 'frame':
             o_transformation = _cnv_frame(po_src_file, po_dst_file, o_cfg)
+        elif pu_mode == 'hbars':
+            o_transformation = _cnv_hbars(po_src_file, po_dst_file, o_cfg)
         elif pu_mode == 'magcover':
             o_transformation = _cnv_magcover(po_src_file, po_dst_file, o_cfg)
+        elif pu_mode == 'vbars':
+            o_transformation = _cnv_vbars(po_src_file, po_dst_file, o_cfg)
+        else:
+            o_transformation = None
 
         o_transformation.o_path = po_dst_file
 
@@ -347,7 +355,117 @@ def _cnv_frame(po_src_file, po_dst_file, po_cfg):
     o_img_transformation.tf_bottom_right = (tf_bottom_right[0] / ti_img_size[0], tf_bottom_right[1] / ti_img_size[1])
 
     # Debug code to overlay image regions
-    # draw_coordinates(pu_dst_file, o_img_transformation)
+    # draw_coordinates(po_dst_file, o_img_transformation)
+
+    return o_img_transformation
+
+
+def _cnv_hbars(po_src_file, po_dst_file, po_cfg):
+    """
+    Image conversion that pixelates the image using horizontal bars.
+
+    This function is a quick modification (only one line modified from _cnv_pixelate:
+
+        In _cnv_pixelate:
+
+            u_cmd += u'-ordered-dither o2x2 -resize %ix%i! ' % (ti_pic_size_small[0], ti_pic_size_small[1])
+
+        Here:
+
+                u_cmd += u'-ordered-dither o2x2 -resize %ix%i! ' % (1, ti_pic_size_small[1])
+
+    So, don't edit this function
+    directly for any major change.
+
+    :param po_src_file:
+    :param po_dst_file:
+    :param po_cfg:
+    :return:
+    """
+
+    # Variables preparation
+    #----------------------
+    # TODO: Using "focus" property to select the colors and the size seems a bit of a hack. Change option name?
+    i_colors = int(round(po_cfg.tf_focus[0] * 100))
+    i_colors = _clamp(i_colors, 1, 128)
+
+    i_pixels = int(round(po_cfg.tf_focus[1] * 100))
+    i_pixels = _clamp(i_pixels, 1, 128)
+
+    f_cos = math.cos(math.radians(po_cfg.f_rotation))
+    f_sin = math.sin(math.radians(po_cfg.f_rotation))
+    #print 'colors: %i' % i_colors
+    #print 'pixels: %i' % i_pixels
+
+    ti_pic_size_final = geom.max_in_rect(po_cfg.ti_size, po_cfg.tf_aspect)
+    ti_pic_size_small = geom.max_in_rect((i_pixels, i_pixels), po_cfg.tf_aspect)
+
+    # Command line build
+    #-------------------
+    u_cmd = u'convert '
+    u_cmd += u'"%s" ' % po_src_file.u_path
+
+    # Pixelation
+    u_cmd += u'-colors %i ' % i_colors
+    u_cmd += u'-ordered-dither o2x2 -resize %ix%i! ' % (1, ti_pic_size_small[1])
+    u_cmd += u'-modulate 100,200,100 '
+    u_cmd += u'-filter point -resize %ix%i! ' % (ti_pic_size_final[0], ti_pic_size_final[1])
+
+    u_cmd += u'-colorspace rgb '
+    u_cmd += u'-background transparent '
+
+    # Rotation
+    u_cmd += u'-rotate %f +repage ' % -po_cfg.f_rotation
+
+    # Final output
+    u_cmd += u'-background "#%s" -flatten ' % po_cfg.u_bgcolor                               # Background color
+    u_cmd += u'"%s"' % po_dst_file.u_path                                                    # Output file
+
+    # Command line execution
+    #-----------------------
+    du_output = cmd.execute(u_cmd)
+
+    if du_output['u_stderr']:
+        print du_output['u_stderr']
+
+    # Coordinates calculation after image manipulation
+    #-------------------------------------------------
+    ti_img_size = _img_get_size(po_dst_file.u_path)
+
+    # Delta distances in rotated image in screen coordinates
+    tf_dx = (0.5 * ti_pic_size_final[0] * f_cos, 0.5 * ti_pic_size_final[0] * f_sin)
+    tf_dy = (0.5 * ti_pic_size_final[1] * f_sin, 0.5 * ti_pic_size_final[1] * f_cos)
+
+    tf_center = (0.5 * ti_img_size[0], 0.5 * ti_img_size[1])
+    tf_left = (tf_center[0] - tf_dx[0], tf_center[1] + tf_dx[1])
+    tf_right = (tf_center[0] + tf_dx[0], tf_center[1] - tf_dx[1])
+
+    tf_top = (tf_center[0] - tf_dy[0], tf_center[1] - tf_dy[1])
+    tf_top_left = (tf_top[0] - tf_dx[0], tf_top[1] + tf_dx[1])
+    tf_top_right = (tf_top[0] + tf_dx[0], tf_top[1] - tf_dx[1])
+
+    tf_bottom = (tf_center[0] + tf_dy[0], tf_center[1] + tf_dy[1])
+    tf_bottom_left = (tf_bottom[0] - tf_dx[0], tf_bottom[1] + tf_dx[1])
+    tf_bottom_right = (tf_bottom[0] + tf_dx[0], tf_bottom[1] - tf_dx[1])
+
+    # Transformation object result
+    o_img_transformation = ImgKeyCoords()
+    o_img_transformation.ti_size = ti_img_size
+
+    o_img_transformation.tf_top = (tf_top[0] / ti_img_size[0], tf_top[1] / ti_img_size[1])
+    o_img_transformation.tf_top_left = (tf_top_left[0] / ti_img_size[0], tf_top_left[1] / ti_img_size[1])
+    o_img_transformation.tf_top_right = (tf_top_right[0] / ti_img_size[0], tf_top_right[1] / ti_img_size[1])
+
+    o_img_transformation.tf_center = (.5, .5)
+    o_img_transformation.tf_left = (tf_left[0] / ti_img_size[0], tf_left[1] / ti_img_size[1])
+    o_img_transformation.tf_right = (tf_right[0] / ti_img_size[0], tf_right[1] / ti_img_size[1])
+
+    o_img_transformation.tf_bottom = (tf_bottom[0] / ti_img_size[0], tf_bottom[1] / ti_img_size[1])
+    o_img_transformation.tf_bottom_left = (tf_bottom_left[0] / ti_img_size[0], tf_bottom_left[1] / ti_img_size[1])
+    o_img_transformation.tf_bottom_right = (tf_bottom_right[0] / ti_img_size[0], tf_bottom_right[1] / ti_img_size[1])
+
+    # Debug code to overlay image regions
+    #_draw_coordinates(po_dst_file, o_img_transformation)
 
     return o_img_transformation
 
@@ -529,6 +647,213 @@ def _cnv_magcover(po_src_file, po_dst_file, po_cfg):
     return o_img_transformation
 
 
+def _cnv_pixelate(po_src_file, po_dst_file, po_cfg):
+    """
+    Image conversion that pixelates and reduces the number of colors in the images.
+
+    :param po_src_file:
+    :param po_dst_file:
+    :param po_cfg:
+    :return:
+    """
+
+    # Variables preparation
+    #----------------------
+    # TODO: Using "focus" property to select the colors and the size seems a bit of a hack. Change option name?
+    i_colors = int(round(po_cfg.tf_focus[0] * 100))
+    i_colors = _clamp(i_colors, 1, 128)
+
+    i_pixels = int(round(po_cfg.tf_focus[1] * 100))
+    i_pixels = _clamp(i_pixels, 1, 128)
+
+    f_cos = math.cos(math.radians(po_cfg.f_rotation))
+    f_sin = math.sin(math.radians(po_cfg.f_rotation))
+    #print 'colors: %i' % i_colors
+    #print 'pixels: %i' % i_pixels
+
+    ti_pic_size_final = geom.max_in_rect(po_cfg.ti_size, po_cfg.tf_aspect)
+    ti_pic_size_small = geom.max_in_rect((i_pixels, i_pixels), po_cfg.tf_aspect)
+
+    # Command line build
+    #-------------------
+    u_cmd = u'convert '
+    u_cmd += u'"%s" ' % po_src_file.u_path
+
+    # Pixelation
+    u_cmd += u'-colors %i ' % i_colors
+    u_cmd += u'-ordered-dither o2x2 -resize %ix%i! ' % (ti_pic_size_small[0], ti_pic_size_small[1])
+    u_cmd += u'-modulate 100,200,100 '
+    u_cmd += u'-filter point -resize %ix%i! ' % (ti_pic_size_final[0], ti_pic_size_final[1])
+
+    u_cmd += u'-colorspace rgb '
+    u_cmd += u'-background transparent '
+
+    # Rotation
+    u_cmd += u'-rotate %f +repage ' % -po_cfg.f_rotation
+
+    # Final output
+    u_cmd += u'-background "#%s" -flatten ' % po_cfg.u_bgcolor                               # Background color
+    u_cmd += u'"%s"' % po_dst_file.u_path                                                    # Output file
+
+    # Command line execution
+    #-----------------------
+    du_output = cmd.execute(u_cmd)
+
+    if du_output['u_stderr']:
+        print du_output['u_stderr']
+
+    # Coordinates calculation after image manipulation
+    #-------------------------------------------------
+    ti_img_size = _img_get_size(po_dst_file.u_path)
+
+    # Delta distances in rotated image in screen coordinates
+    tf_dx = (0.5 * ti_pic_size_final[0] * f_cos, 0.5 * ti_pic_size_final[0] * f_sin)
+    tf_dy = (0.5 * ti_pic_size_final[1] * f_sin, 0.5 * ti_pic_size_final[1] * f_cos)
+
+    tf_center = (0.5 * ti_img_size[0], 0.5 * ti_img_size[1])
+    tf_left = (tf_center[0] - tf_dx[0], tf_center[1] + tf_dx[1])
+    tf_right = (tf_center[0] + tf_dx[0], tf_center[1] - tf_dx[1])
+
+    tf_top = (tf_center[0] - tf_dy[0], tf_center[1] - tf_dy[1])
+    tf_top_left = (tf_top[0] - tf_dx[0], tf_top[1] + tf_dx[1])
+    tf_top_right = (tf_top[0] + tf_dx[0], tf_top[1] - tf_dx[1])
+
+    tf_bottom = (tf_center[0] + tf_dy[0], tf_center[1] + tf_dy[1])
+    tf_bottom_left = (tf_bottom[0] - tf_dx[0], tf_bottom[1] + tf_dx[1])
+    tf_bottom_right = (tf_bottom[0] + tf_dx[0], tf_bottom[1] - tf_dx[1])
+
+     # Transformation object result
+    o_img_transformation = ImgKeyCoords()
+    o_img_transformation.ti_size = ti_img_size
+
+    o_img_transformation.tf_top = (tf_top[0] / ti_img_size[0], tf_top[1] / ti_img_size[1])
+    o_img_transformation.tf_top_left = (tf_top_left[0] / ti_img_size[0], tf_top_left[1] / ti_img_size[1])
+    o_img_transformation.tf_top_right = (tf_top_right[0] / ti_img_size[0], tf_top_right[1] / ti_img_size[1])
+
+    o_img_transformation.tf_center = (.5, .5)
+    o_img_transformation.tf_left = (tf_left[0] / ti_img_size[0], tf_left[1] / ti_img_size[1])
+    o_img_transformation.tf_right = (tf_right[0] / ti_img_size[0], tf_right[1] / ti_img_size[1])
+
+    o_img_transformation.tf_bottom = (tf_bottom[0] / ti_img_size[0], tf_bottom[1] / ti_img_size[1])
+    o_img_transformation.tf_bottom_left = (tf_bottom_left[0] / ti_img_size[0], tf_bottom_left[1] / ti_img_size[1])
+    o_img_transformation.tf_bottom_right = (tf_bottom_right[0] / ti_img_size[0], tf_bottom_right[1] / ti_img_size[1])
+
+    # Debug code to overlay image regions
+    _draw_coordinates(po_dst_file, o_img_transformation)
+
+    return o_img_transformation
+
+
+def _cnv_vbars(po_src_file, po_dst_file, po_cfg):
+    """
+    Image conversion that pixelates the image using vertical bars.
+
+    This function is a quick modification (only one line modified from _cnv_pixelate:
+
+        In _cnv_pixelate:
+
+            u_cmd += u'-ordered-dither o2x2 -resize %ix%i! ' % (ti_pic_size_small[0], ti_pic_size_small[1])
+
+        Here:
+
+                u_cmd += u'-ordered-dither o2x2 -resize %ix%i! ' % (ti_pic_size_small[0], 1)
+
+    So, don't edit this function
+    directly for any major change.
+
+    :param po_src_file:
+    :param po_dst_file:
+    :param po_cfg:
+    :return:
+    """
+
+    # Variables preparation
+    #----------------------
+    # TODO: Using "focus" property to select the colors and the size seems a bit of a hack. Change option name?
+    i_colors = int(round(po_cfg.tf_focus[0] * 100))
+    i_colors = _clamp(i_colors, 1, 128)
+
+    i_pixels = int(round(po_cfg.tf_focus[1] * 100))
+    i_pixels = _clamp(i_pixels, 1, 128)
+
+    f_cos = math.cos(math.radians(po_cfg.f_rotation))
+    f_sin = math.sin(math.radians(po_cfg.f_rotation))
+    print 'colors: %i' % i_colors
+    print 'pixels: %i' % i_pixels
+
+    ti_pic_size_final = geom.max_in_rect(po_cfg.ti_size, po_cfg.tf_aspect)
+    ti_pic_size_small = geom.max_in_rect((i_pixels, i_pixels), po_cfg.tf_aspect)
+
+    # Command line build
+    #-------------------
+    u_cmd = u'convert '
+    u_cmd += u'"%s" ' % po_src_file.u_path
+
+    # Pixelation
+    u_cmd += u'-colors %i ' % i_colors
+    u_cmd += u'-ordered-dither o2x2 -resize %ix%i! ' % (ti_pic_size_small[0], 1)
+    u_cmd += u'-modulate 100,200,100 '
+    u_cmd += u'-filter point -resize %ix%i! ' % (ti_pic_size_final[0], ti_pic_size_final[1])
+
+    u_cmd += u'-colorspace rgb '
+    u_cmd += u'-background transparent '
+
+    # Rotation
+    u_cmd += u'-rotate %f +repage ' % -po_cfg.f_rotation
+
+    # Final output
+    u_cmd += u'-background "#%s" -flatten ' % po_cfg.u_bgcolor                               # Background color
+    u_cmd += u'"%s"' % po_dst_file.u_path                                                    # Output file
+
+    # Command line execution
+    #-----------------------
+    du_output = cmd.execute(u_cmd)
+
+    if du_output['u_stderr']:
+        print du_output['u_stderr']
+
+    # Coordinates calculation after image manipulation
+    #-------------------------------------------------
+    ti_img_size = _img_get_size(po_dst_file.u_path)
+
+    # Delta distances in rotated image in screen coordinates
+    tf_dx = (0.5 * ti_pic_size_final[0] * f_cos, 0.5 * ti_pic_size_final[0] * f_sin)
+    tf_dy = (0.5 * ti_pic_size_final[1] * f_sin, 0.5 * ti_pic_size_final[1] * f_cos)
+
+    tf_center = (0.5 * ti_img_size[0], 0.5 * ti_img_size[1])
+    tf_left = (tf_center[0] - tf_dx[0], tf_center[1] + tf_dx[1])
+    tf_right = (tf_center[0] + tf_dx[0], tf_center[1] - tf_dx[1])
+
+    tf_top = (tf_center[0] - tf_dy[0], tf_center[1] - tf_dy[1])
+    tf_top_left = (tf_top[0] - tf_dx[0], tf_top[1] + tf_dx[1])
+    tf_top_right = (tf_top[0] + tf_dx[0], tf_top[1] - tf_dx[1])
+
+    tf_bottom = (tf_center[0] + tf_dy[0], tf_center[1] + tf_dy[1])
+    tf_bottom_left = (tf_bottom[0] - tf_dx[0], tf_bottom[1] + tf_dx[1])
+    tf_bottom_right = (tf_bottom[0] + tf_dx[0], tf_bottom[1] - tf_dx[1])
+
+     # Transformation object result
+    o_img_transformation = ImgKeyCoords()
+    o_img_transformation.ti_size = ti_img_size
+
+    o_img_transformation.tf_top = (tf_top[0] / ti_img_size[0], tf_top[1] / ti_img_size[1])
+    o_img_transformation.tf_top_left = (tf_top_left[0] / ti_img_size[0], tf_top_left[1] / ti_img_size[1])
+    o_img_transformation.tf_top_right = (tf_top_right[0] / ti_img_size[0], tf_top_right[1] / ti_img_size[1])
+
+    o_img_transformation.tf_center = (.5, .5)
+    o_img_transformation.tf_left = (tf_left[0] / ti_img_size[0], tf_left[1] / ti_img_size[1])
+    o_img_transformation.tf_right = (tf_right[0] / ti_img_size[0], tf_right[1] / ti_img_size[1])
+
+    o_img_transformation.tf_bottom = (tf_bottom[0] / ti_img_size[0], tf_bottom[1] / ti_img_size[1])
+    o_img_transformation.tf_bottom_left = (tf_bottom_left[0] / ti_img_size[0], tf_bottom_left[1] / ti_img_size[1])
+    o_img_transformation.tf_bottom_right = (tf_bottom_right[0] / ti_img_size[0], tf_bottom_right[1] / ti_img_size[1])
+
+    # Debug code to overlay image regions
+    #_draw_coordinates(po_dst_file, o_img_transformation)
+
+    return o_img_transformation
+
+
 # HELPER GENERIC FUNCTIONS
 #=======================================================================================================================
 def _is_valid_tuple(tx_tuple, pi_dim, *p_type):
@@ -703,3 +1028,14 @@ def _img_get_size(pu_image):
     i_height = int(du_output['u_stdout'].partition('x')[2])
 
     return i_width, i_height
+
+
+def _clamp(i_value, i_min, i_max):
+    """
+    Function to force a value to be between certain range.
+    :param i_value:
+    :param i_min:
+    :param i_max:
+    :return:
+    """
+    return max(min(i_max, i_value), i_min)
