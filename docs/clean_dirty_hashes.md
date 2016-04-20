@@ -1,8 +1,10 @@
-# Clean vs Dirty Hashes
+Clean vs Dirty Hashes
+=====================
 
 **TODO:** Maybe it's better to move this document to hqlib documentation because it doesn't much sense here.
 
-## 1. What's inside a file
+1. What's inside a file
+-----------------------
 
 Lets start by the beginning... a computer file stores certain amount of data in digital format, which basically means
 they are a long string of zeros (0) and ones (1):
@@ -31,7 +33,8 @@ Remember, those numbers represent the same amounts in different formats:
     hexadecimal       6A       A2       DA       EA       EB       BB      77 ...
 
 
-## 2. How to check the content of a file
+2. How to check the content of a file
+-------------------------------------
 
 Now that we know that inside the file we just have zeros and ones that typically are put together in groups of 8 and
 written in hex format. How can we check that two files are different or equal? Easy answer... comparing the numbers one
@@ -83,7 +86,9 @@ So, to sum it up:
 * Because hashes are smaller than the actual data, you can compare two files without actually having them by simply
   comparing their hashes. And you can store the hashes too without having the files.
   
-## 3. Real-World hashing mechanisms
+  
+3. Real-World hashing mechanisms
+--------------------------------
 
 Let's go one step further to see which are the most common used hashing algorithms out there. They are **CRC32**,
 **MD5**, and **SHA1**. The probability of having a collision between two particular files is calculated using this
@@ -92,7 +97,10 @@ formula:
     P(collision) = 1 / 16^n
     
 Where `n` is 8 for CRC32, 32 for MD5, and 40 for SHA1. Really low in any case... but not as low if you take into
-consideration the [Birthday Problem](http://www.wikiwand.com/en/Birthday_problem)
+consideration the [Birthday Problem](http://www.wikiwand.com/en/Birthday_problem):
 
+    P(collision) = 1 - e ^(-n^2 / 2 * H)
+     
+Or:
 
- P(collision) = 1 - e ^(-n^2 / 2 * H) or 1 - e ^ (-n(n-1) / 2 * H)
+    P(collision) = 1 - e ^ (-n(n-1) / 2 * H)
