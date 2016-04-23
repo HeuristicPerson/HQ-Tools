@@ -4,17 +4,26 @@ hq_img_convert effects
 1. Parameters
 -------------
 
-* `-a`, aspect ratio
+* `-a [width],[height]`, aspect ratio. Controls the width/height proportions of the image. i.e. `-a 16,9` for typical
+  TV panoramic images.
 
-* `-c`, color
+* `-c [RGBA hex color]`, color. Used for different things depending on the mode. i.e. `-c ff0000` is solid red and
+  `-c ff000080` is 50% transparent red.
 
-* `-e`, extension
+* `-e [extension]`, extension. Extension of the output file. i.e. `-e jpg` to produce a jpg image. By default, the
+  output images will have the same extension than the source images. When you are working with a single image, you can
+  directly specify the extension of the final image by its name. i.e. `hq_img_convert source.jpg destination.gif`. But,
+  when you work with directories, you can use `-e` option to choose the format. i.e
+  `hq_img_convert -e gif src_dir dst_dir`.
 
-* `-o`, options (#TODO: Change name)
+* `-o [A,B]`, two options where A and B are float numbers. They mean different things for each mode. i.e. in `hbars`
+  mode you can select the number of bars and the number of colors like `-o [colors],[bars]`.
 
-* `-r`, rotation
+* `-r`, clockwise rotation angle in degrees. i.e. `-r 15.2`.
 
-* `-s`, size
+* `-s`, size in pixels. i.e. `-s 640,480`. Notice that for some effects this is the FINAL size of the output image while
+  for others it can be slightly different. i.e. in `frame` mode, the image is resized to the values indicated by this
+  options; then, an extra frame is added around the image and it's rotated. Both modifications increase the final size.
 
 
 2. Modes
@@ -22,6 +31,29 @@ hq_img_convert effects
 
 ### 1. *frame* - Picture frame
 
+![Frame effect example](images/frame_src_dst.png)  
+*mosaic - Original and converted image*
+
+  * `-c` controls the background color.
+  
+  * `-o` controls the location of the soft bright point into the image. 0.0,0.0 is the top-left corner and 1.0,1.0 is the
+     bottom-right corner.
+     
+  * `-s` controls the size of the picture itself. Notice the frame, the shadow, and the rotation will increase the final
+    size of the image.
+
+Example:
+
+    hq_img_convert.py frame -c 7ec7a1 -o 0,0 -r -5 -a 4,3 -s 640,480 src/marioworld.png dst/marioworld.png
+
+The process followed by the image is:
+
+  1. Image is scaled to fill 640x480 pixels (`-s 640,480`) respecting an aspect ratio of 4,3 (`-a 4,3`).
+  2. The bright point is overlaid in the top-left corner (`-o 0,0`).
+  3. Frame border is generated (you don't have control over this process).
+  3. Image is rotated 5 degrees anticlockwise (`-r 5`).
+  4. Image shadow is generated (you don't have control over this process).
+  5. Background color is placed (`-c 7ec7a1`).
 
 ### 2. *hbars* - Horizontal bars
 
@@ -41,25 +73,49 @@ hq_img_convert effects
 
 Example:
 
-    hq_img_convert.py hbars -o 12,32 -c 80808040 -r -2 -s 640,480 "test_data/marioworld.png" /tmp/marioworld.png
+    hq_img_convert.py hbars -o 12,32 -c 80008040 -r -2 -s 640,480 src/marioworld.png dst/marioworld.png
 
 The process followed by the image is:
 
-![Alt](images/hbars_1.png)   
-*#1 Image is drawn with 32 bars of 12 colors*
-
-![Alt](images/hbars_2.png)   
-*#2 25% opaque grey (80808040) is overlaid*
-
-![Alt](images/hbars_3.png)  
-*#3 Image is rotated -2º and scaled until it completely fills 640x480 pixels*
-
-![Alt](images/hbars_4.png)  
-*#4 Image is cropped to final size, 640x480 pixels*
+  1. Image is drawn with 32 horizontal bars of 12 colors (`-o 12,32`).
+  2. 25% opaque purple (#80008040) is overlaid (`-c 80008040`).
+  3. Image is rotated 2º anticlockwise (`-r 2`) and scaled until it completely fills 640x480 pixels.
+  4. Image is cropped to final size, 640x480 pixels (`-s 640,480`).
 
 ### 3. *magcover* - Magazine cover
 
-### 4. mosaic
+![magcover effect](images/magcover_src_dst.png)  
+*magcover - original and converted image*
+
+Example:
+
+    hq_img_convert.py magcover -c c0c0c0 -r -3 -s 640,480 -a 1,1 src/marioworld.png dst/tmp/marioworld.png
+
+The process followed by the image is:
+
+  1. Image is resized to desired size of 640x480 pixels (`-s 640,480`) keeping an square aspect ratio (`-a 1,1`).
+  2. Image decoration is added: shadow, staples, reflections... (you don't have control over this part).
+  3. Image is rotated 3º anticlockwise (`-r -3`).
+  4. Grey background color is applied (`-c c0c0c0`).
+
+
+### 4. *mosaic*
+
+![Alt](images/mosaic_src_dst.png)  
+*hbars - original and converted image*
+
+Example:
+
+    hq_img_convert.py mosaic -o 16,8 -c c0c0c0a0 -s 640,480 -a 4,3 src/marioworld.png dst/marioworld.png
+
+The process followed by the image is:
+
+  1. Image is drawn using 8 pixels for the shortest side and 16 colors (`-o 16,8`); aspect ratio of 4:3 will be
+     used for image size (`-a 4,3`).
+  2. 75% opaque grey (#c0c0c0a0) is overlaid (`-c c0c0c0a0`).
+  3. (No image rotation is applied in this example).
+  4. Image is resized to final size of 640x480 pixels (`-s 640,480`).
+
 
 ### 5. *vbars* - Vertical bars
 
@@ -74,23 +130,16 @@ The process followed by the image is:
 * `-s` is the final size of the image. Aspect ratio won't be preserved so the vertical bars will always cover the entire
   size given.
 
-![Alt](images/vbars_src_dst.png)  
+![Vertical bars effect example](images/vbars_src_dst.png)  
 *vbars - original and converted image*
 
 Example:
     
-    hq_img_convert.py vbars -o 6,32 -c ff000080 -r 10 -s 640,480 "src/marioworld.png" "dst/marioworld.png"
+    hq_img_convert.py vbars -o 16,32 -c ff000020 -r 10 -s 640,480 src/marioworld.png dst/marioworld.png
 
 The process followed by the image is:
 
-![Alt](images/vbars_1.png)   
-*#1 Image is drawn with 32 bars of 6 colors*
-
-![Alt](images/vbars_2.png)   
-*#2 Half-transparent red (ff000080) is overlaid*
-
-![Alt](images/vbars_3.png)  
-*#3 Image is rotated 10º and scaled until it completely fills 640x480 pixels*
-
-![Alt](images/vbars_4.png)  
-*#4 Image is cropped to final size, 640x480 pixels*
+  1. Image is drawn with 32 vertical bars of 16 colors (`-o 16,32`).
+  2. 12.5% opaque red (#ff000020) is overlaid (`-c ff000020`).
+  3. Image is rotated 10º clockwise (`-r 10`) and scaled until it completely fills 640x480 pixels.
+  4. Image is cropped to final size, 640x480 pixels (`-s 640,480`).
