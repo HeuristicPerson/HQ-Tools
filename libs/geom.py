@@ -3,6 +3,7 @@
 Some basic and general purpose geometric functions and classes.
 """
 
+import math
 import re
 
 
@@ -95,33 +96,102 @@ def _parse_coord_chunk(pu_coord_chunk):
     return f_coord, f_delta
 
 
-def max_in_rect(ptf_rect=(0.0, 0.0), ptf_aspect=(0.0, 0.0)):
+def max_rect_in(ptf_rec_out=(0.0, 0.0), pf_rot_in=0.0, ptf_asp_in=(0.0, 0.0)):
     """
     Function to determine the biggest rectangle with certain aspect ratio that fits inside another rectangle.
 
-    :param ptf_rect: Container rectangle size (width, height). i.e. (1920.0, 1080.0)
+    :param ptf_rec_out: Container rectangle size (width, height). i.e. (1920.0, 1080.0)
 
-    :param ptf_aspect: Inner rectangle aspect ratio (width, height). i.e. (4.0, 3.0)
+    :param pf_rot_in: Rotation of the inner rectangle in degrees. i.e. 23.5
+
+    :param ptf_asp_in: Inner rectangle aspect ratio (width, height). i.e. (4.0, 3.0)
 
     :return: A tuple with the (width, height) of the maximum size rectangle. i.e. (1440, 1080)
     """
 
+    # TODO: Create a private function for 0º rotation and then extend functionality for rotation angle here.
+
     # Option 1: Make inner width = container width
     #---------------------------------------------
-    f_width_1 = ptf_rect[0]
-    f_height_1 = f_width_1 * ptf_aspect[1] / ptf_aspect[0]
+    f_width_1 = ptf_rec_out[0]
+    f_height_1 = f_width_1 * ptf_asp_in[1] / ptf_asp_in[0]
 
     # Option 2: Make inner height = container height
     #-----------------------------------------------
-    f_height_2 = ptf_rect[1]
-    f_width_2 = f_height_2 * ptf_aspect[0] / ptf_aspect[1]
+    f_height_2 = ptf_rec_out[1]
+    f_width_2 = f_height_2 * ptf_asp_in[0] / ptf_asp_in[1]
 
-    if f_width_1 <= ptf_rect[0] and f_height_1 <= ptf_rect[1]:
+    if f_width_1 <= ptf_rec_out[0] and f_height_1 <= ptf_rec_out[1]:
         tf_in_rect = (f_width_1, f_height_1)
     else:
         tf_in_rect = (f_width_2, f_height_2)
 
     return tf_in_rect
+
+
+def min_rect_out(ptf_rec_in=(0.0, 0.0), pf_rot_out=0.0, ptf_asp_out=None):
+    """
+    Function that returns the minimum rotated outer rectangle WITH CERTAIN ASPECT RATIO of another rectangle.
+
+    :param ptf_rec_in: Size of the inner rectangle (width, height). i.e. (20.0, 13.5)
+    :param pf_rot_out: Rotation of the outer rectangle in degrees. i.e. 15.0
+    :param ptf_asp_out: Aspect ratio of the outer rectangle (width, height). i.e. (4.0, 3.0)
+    :return: A tuple with the width and height of the outer rectangle (width, height). i.e. (40.0, 23.2)
+    """
+    tf_min_rec = _min_rect_out(ptf_rec_in=ptf_rec_in, pf_rot_out=pf_rot_out)
+
+    if not ptf_asp_out:
+        tf_output = tf_min_rec
+
+    else:
+        f_min_rec_ratio = tf_min_rec[0] / tf_min_rec[1]
+        f_desired_ratio = ptf_asp_out[0] / ptf_asp_out[1]
+
+        if f_desired_ratio > f_min_rec_ratio:
+            tf_output = (f_desired_ratio * tf_min_rec[1], tf_min_rec[1])
+        else:
+            tf_output = (tf_min_rec[0], tf_min_rec[0] / f_desired_ratio)
+
+    return tf_output
+
+
+def _min_rect_out(ptf_rec_in=(0.0, 0.0), pf_rot_out=0.0):
+    """
+    Function to obtain the width and height of the minimum rotated angle that contains the given rectangle.
+
+    ptf_rec_in: Inner rectangle dimensions tuple (width, height). i.e. (20.0, 16.3)
+
+    ptf_asp_out: Outer rectangle aspect (width, height). i.e. (4.0, 3.0)
+
+    pf_rot_out: Outer rectangle rotation in degrees. i.e. 15.0
+    """
+
+    # Rotation angle of the outer rectangle
+    f_rot_outer = math.radians(float(pf_rot_out) % 180)
+
+    # Length of the diagonals
+    f_diag_inner = (ptf_rec_in[0] ** 2 + ptf_rec_in[1] ** 2) ** 0.5
+
+    # Angle of the top-right diagonal
+    f_beta1 = math.atan(float(ptf_rec_in[1]) / float(ptf_rec_in[0]))
+    f_beta2 = math.pi - f_beta1
+
+    # Width, Height of the outer rectangle
+    b_reverse = False
+    if f_rot_outer >= 0.5 * math.pi:
+        f_rot_outer -= 0.5 * math.pi
+        b_reverse = True
+
+    f_width_outer = f_diag_inner * math.cos(f_beta1 - f_rot_outer)
+    f_height_outer = f_diag_inner * math.cos(f_beta2 - 0.5 * math.pi - f_rot_outer)
+
+    if not b_reverse:
+        tf_output = (f_width_outer, f_height_outer)
+    else:
+        tf_output = (f_height_outer, f_width_outer)
+
+    return tf_output
+
 
 def t_sum(pt_tuple_1, pt_tuple_2):
     """

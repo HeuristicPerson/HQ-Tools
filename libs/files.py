@@ -53,7 +53,7 @@ class FilePath(object):
         Method that returns a new FilePath object with the path normalized.
         :return: a FilePath object.
         """
-        u_abs_path = os.path.abspath(self.u_path).decode('utf8')
+        u_abs_path = os.path.abspath(self.u_path.encode('utf8')).decode('utf8')
         o_abs_file = FilePath(u_abs_path)
         return o_abs_file
 
@@ -179,25 +179,23 @@ def get_cwd():
     return o_cwd
 
 
-def read_nlines(o_file, i_lines):
+def read_nlines(po_file, pi_lines):
     """
     Function to read n lines from a file
-    :param o_file:
-    :param i_lines:
+    :param po_file:
+    :param pi_lines:
     :return:
     """
     i_line = 0
-
     lu_lines = []
 
     try:
-        for u_line in o_file:
+        for u_line in po_file:
             i_line += 1
-
-            if i_line > i_lines:
+            lu_lines.append(u_line.rstrip(u'\n'))
+            if i_line == pi_lines:
                 break
-            else:
-                lu_lines.append(u_line)
+
     except IOError:
         pass
 

@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import codecs
-import copy
 import datetime
 import xml.etree.cElementTree
-import os  # OS utils
+import os                       # OS utils
+import re
+
+import csv
 
 
 # Constants
@@ -17,7 +19,7 @@ _tu_GAME_SEARCH_FIELDS = (u'crc32', u'description', u'md5', u'name', u'sha1')   
 
 class Filter:
     """
-    Class to store information about a filter that will be applied later to GameContainer.
+    Class to store information about a filter that will be applied later to RomSetContainer.
     """
 
     def __init__(self, u_attribute, u_method, *x_values):
@@ -41,7 +43,7 @@ class Filter:
         return u_output.encode('utf8', 'strict')
 
 
-class GameContainer:
+class RomSetContainer:
     """
     Class to store a list of games, each game can contain different ROM files data. The information can be read/write to
     disk ROM file objects.
@@ -49,12 +51,12 @@ class GameContainer:
 
     def __init__(self, u_file=u'', u_log=''):
 
-        # TODO: GameContainer should contain an internal registry with all the manipulations suffered by the object so
+        # TODO: RomSetContainer should contain an internal registry with all the manipulations suffered by the object so
         #       when you export the file to disk you know the information is not comming directly from the RAW dat file.
 
         # Variable definition
         self.i_games = 0          # number of games stored
-        self.i_position = None    # Game position for the iterator
+        self.i_position = None    # RomSet position for the iterator
 
         self.u_name = u''         # internal name of the dat file.
         self.u_description = u''  # description of the dat file.
@@ -72,14 +74,14 @@ class GameContainer:
 
     def __str__(self):
         u_output = u''
-        u_output += u'[Game container]\n'
-        u_output += u'       u_name: %s\n' % self.u_name
-        u_output += u'u_desc: %s\n' % self.u_description
-        u_output += u'    u_version: %s\n' % self.u_version
-        u_output += u'    u_comment: %s\n' % self.u_comment
-        u_output += u'       u_type: %s\n' % self.u_type
-        u_output += u'     u_author: %s\n' % self.u_author
-        u_output += u'      i_games: %i\n' % self.i_games
+        u_output += u'<RomSet container>\n'
+        u_output += u'  .u_name:    %s\n' % self.u_name
+        u_output += u'  .u_desc:    %s\n' % self.u_description
+        u_output += u'  .u_version: %s\n' % self.u_version
+        u_output += u'  .u_comment: %s\n' % self.u_comment
+        u_output += u'  .u_type:    %s\n' % self.u_type
+        u_output += u'  .u_author:  %s\n' % self.u_author
+        u_output += u'  .i_games:   %i\n' % self.i_games
 
         return u_output.encode('utf8', 'strict')
 
@@ -116,7 +118,7 @@ class GameContainer:
         """
         Method to add a new game to the container.
 
-        :param o_game: Game to add.
+        :param o_game: RomSet to add.
 
         :return: True if the game was successfully added, false in other case.
         """
@@ -151,27 +153,6 @@ class GameContainer:
 
         return b_duplicates
 
-    def _permanent_rom_list_header(self):
-        """
-        Method to build the file header for permanent ROM lists.
-
-        :return: A unicode string containing the header of the permanent rom list.
-        """
-
-        # File header generation
-        u_header = u''
-        u_header += u'# Permanent ROM list. Data comes from this dat file:\n'
-        u_header += u'#\n'
-        u_header += u'#        Name: %s\n' % self.u_name
-        u_header += u'# Description: %s\n' % self.u_description
-        u_header += u'#     Version: %s\n' % self.u_version
-        u_header += u'#     Comment: %s\n' % self.u_comment
-        u_header += u'#      Author: %s\n' % self.u_author
-        u_header += u'#\n'
-        u_header += u'# Id\tName\n'
-
-        return u_header
-
     def empty(self):
         """
         Method to clean all the games of the container but keeping the meta-data.
@@ -185,9 +166,9 @@ class GameContainer:
     def copy_metadata_from(self, o_game_container):
         """
         Method to copy meta-data information (everything but the list of games itself and the number of games) from
-        other GameContainer object.
+        other RomSetContainer object.
 
-        :param o_game_container: External GameContainer object.
+        :param o_game_container: External RomSetContainer object.
         """
 
         # Modification of data
@@ -208,6 +189,46 @@ class GameContainer:
         u_log_message += u'u_author="%s" ' % self.u_author
 
         self._log(u_log_message)
+
+    def csv_export(self, ptu_fields=(), ptu_headings=()):
+        """
+        Method to export the RomSetContainer data to a csv file.
+
+        :param ptu_fields: Tuple of the fields to export, i.e. ('u_crc32', 'u_name', 'i_year'')
+
+        :param ptu_headings: Tuple with the headings for each field. If the tuple is emtpy, the raw field names will be
+                             used. i.e. ('CRC32', 'Game Name', 'Year')
+
+        :return: Nothing
+        """
+
+        o_csv = csv.ParsedCsv()
+
+        # Comments
+        o_csv.lu_comments.append(u'   Dat Name: %s' % self.u_name)
+        o_csv.lu_comments.append(u'    Version: %s' % self.u_version)
+        o_csv.lu_comments.append(u'Description: %s' % self.u_description)
+        o_csv.lu_comments.append(u'    Comment: %s' % self.u_comment)
+        o_csv.lu_comments.append(u'     Author: %s' % self.u_author)
+        o_csv.lu_comments.append(u'       Type: %s' % self.u_type)
+        o_csv.lu_comments.append(u'      Games: %i' % self.i_games)
+
+        # Headings
+        if ptu_headings:
+            o_csv.lu_headings = ptu_headings
+        else:
+            o_csv.lu_headings = ptu_fields
+
+        for o_game in self:
+            lu_saved_fields = []
+
+            for u_field in ptu_fields:
+                u_field_to_save = str(getattr(o_game, u_field))
+                lu_saved_fields.append(u_field_to_save)
+
+            o_csv.append_row(lu_saved_fields)
+
+        return o_csv
 
     def filter(self, o_filter):
         """
@@ -231,14 +252,14 @@ class GameContainer:
         u_log_message += u'Method="%s" ' % o_filter.u_method
         u_log_message += u'Value(s)="%s"' % str(o_filter.lx_values)
 
-        # Two GameContainer objects are created to store the games that matched the filter and the games that didn't
+        # Two RomSetContainer objects are created to store the games that matched the filter and the games that didn't
         # matched it.
-        o_matched_container = GameContainer()
+        o_matched_container = RomSetContainer()
         o_matched_container.copy_metadata_from(self)
         o_matched_container.modify_metadata(u'FILTER(', u')')
         o_matched_container._log(u'%s %s' % (u_log_in_start, u_log_message))
 
-        o_unmatched_container = GameContainer()
+        o_unmatched_container = RomSetContainer()
         o_unmatched_container.copy_metadata_from(self)
         o_unmatched_container._log(u'%s %s' % (u_log_out_start, u_log_message))
 
@@ -301,7 +322,7 @@ class GameContainer:
         """
         Method to set the id field for each game as one between the different options given.
 
-        :param s_mode: Which mode should be used to assign the games an id. Valid modes are defined in Game object.
+        :param s_mode: Which mode should be used to assign the games an id. Valid modes are defined in RomSet object.
 
         :return Nothing.
         """
@@ -358,7 +379,7 @@ class GameContainer:
 
         return o_games_in
 
-    def get_by_description(self, u_description):
+    def _get_by_description(self, u_description):
         """
         Method that returns the game object corresponding to certain name.
 
@@ -391,28 +412,33 @@ class GameContainer:
 
         return o_found_game
 
-    def get_by_descriptions(self, lu_descriptions):
+    def get_by_descriptions(self, *pu_descriptions):
         """
-        Method to obtain a sub-container of from a list of names (actually descriptions since name is the name of the
-        ROM, not the real name of the game. For most console material, they are the same but for the case of Mame, short
-        name is just 8 characters long while description is the real name of the game).
+        Method to obtain a sub-RomSetContainer from a list of rom names.
 
-        This method is analogue to get_by_ids method.
+        For most console material, the rom name and the game description is the same. But in MAME, the ROM name is 8
+        character while the game description is the full game name.
 
-        :param lu_descriptions: List containing the Ids to search. i.e. ['12345678', 'aaaaaaaa', 'a0b1c2d3e4']
+        #TODO: get_by_ids method should be analogue to this one.
 
-        :return: A dictionary containing the matched games. i.e. {'12345678}': <game 1327>, 'aaaaaaaa': <game 148>}
+        :param pu_descriptions: Descriptions to search for i.e. u'Super Mario World (USA)', u'Yoshi's Island (JAP)'
+
+        :return: A game container with the found games and a list with the not found games descriptions.
         """
 
-        # First we create an empty container
-        o_games_found = GameContainer()
+        # We create an empty container for the found games, and a plain list for games not present in DB
+        lu_games_not_found = []
+        o_games_found = RomSetContainer()
         o_games_found.copy_metadata_from(self)
 
-        for u_description in lu_descriptions:
-            o_game = self.get_by_description(u_description)
-            o_games_found.add_game(o_game)
+        for u_description in pu_descriptions:
+            o_game = self._get_by_description(u_description)
+            if o_game:
+                o_games_found.add_game(o_game)
+            else:
+                lu_games_not_found.append(u_description)
 
-        return o_games_found
+        return o_games_found, lu_games_not_found
 
     def get_game_by_field(self, u_field=None, u_search_string=None, b_discard_irrelevant=False):
         """
@@ -436,7 +462,7 @@ class GameContainer:
 
                 # Hash searches are case insensitive
                 if u_field in (u'crc32', u'md5', u'sha1'):
-                    du_hashes = o_game.get_hashes(b_discard_irrelevant=b_discard_irrelevant)
+                    du_hashes = o_game._get_hash(pb_clean=b_discard_irrelevant)
                     u_hash = du_hashes[u_field]
                     if u_hash.lower() == u_search_string.lower():
                         b_game_matched = True
@@ -454,7 +480,7 @@ class GameContainer:
 
         return o_first_game
 
-    def import_extra_data_from_csv(self, u_file):
+    def old_import_extra_data_from_csv(self, u_file):
         """
         Method to import EXTRA DATA (JUST EXTRA META-DATA), like year, manufacturer, genre... from a csv file IN MY OWN
         AND SPECIFIC FORMAT. Only csv files previously written with this library should be loaded
@@ -622,7 +648,7 @@ class GameContainer:
                 ls_head_strings.append(u_line)
                 continue
 
-            # Game data
+            # RomSet data
             if u_line.find('game (') == 0:
                 b_game_mode = True
                 continue
@@ -637,7 +663,7 @@ class GameContainer:
 
                 lu_game_roms = _dat_vertical_parse(lu_game_strings, 'rom', 'multi')
 
-                o_dat_game = Game(u_game_name, u_game_description)
+                o_dat_game = RomSet(u_game_name, u_game_description)
                 o_dat_game.i_year = int(u_game_year)
                 o_dat_game.s_manufacturer = u_game_manufacturer
 
@@ -670,7 +696,7 @@ class GameContainer:
                 b_game_mode = False
                 continue
 
-            # Game mode actions
+            # RomSet mode actions
             if b_game_mode:
                 lu_game_strings.append(u_line)
                 pass
@@ -688,12 +714,12 @@ class GameContainer:
         self.u_version = o_header.find('version').text
         self.u_author = o_header.find('author').text
 
-        # Game information
+        # RomSet information
         for o_game_elem in o_xml_root.findall('game'):
             u_game_name = o_game_elem.attrib['name']
             u_game_description = u_game_name
 
-            o_dat_game = Game(u_game_name, u_game_description)
+            o_dat_game = RomSet(u_game_name, u_game_description)
 
             for o_rom_elem in o_game_elem.findall('rom'):
                 # create a rom object
@@ -710,114 +736,9 @@ class GameContainer:
             # We add the game to the container without any kind of check, we will do it later.
             self._add_game(o_dat_game)
 
-    def export_to_file(self, u_file, u_format, o_filter=None):
-        """
-        Method to export PART OF THE DATA contained in the Dat container to disk using different formats. I highlight
-        PART OF THE DATA since not all of it is saved, just the basic information about games, BUT NOT about their
-        ROMs.
-
-        :param u_file: Name of the output file to write. i.e. "/home/john/my-dat.dat"
-
-        :param u_format: Format to save the data in. Valid values, so far, are: 'mini-list',
-
-        :return: Nothing.
-        """
-
-        if o_filter is not None:
-            # todo: make this method work with filters
-            pass
-
-        o_file = open(u_file.encode('utf8', 'strict'), 'w')
-
-        if u_format == u'mini':
-            self._export_to_mini(o_file)
-        elif u_format == u'csv':
-            self._export_to_csv(o_file)
-        else:
-            raise Exception('Unknown format to save the GameContainer "%s"' % u_format)
-
-        o_file.close()
-
-    def _export_to_csv(self, o_file):
-
-        """
-        Method to save the dat file to plain csv. For compatibility reasons, it's much better to separate the values
-        with commas (instead of semicolons) and that forces you to add extra double quote symbols around text fields;
-        which in this case, are all of them.
-
-        :param o_file: Name of the file to write. i.e. '/home/john/my-dat.csv'
-
-        :return: Nothing.
-        """
-
-        # TODO: Create a read_from_csv method and use, obviously, the same column order.
-
-        u_header = u''
-
-        u_header += u'# CSV dat generated by romdats.py version %s\n' % _u_VERSION
-        u_header += u'#\n'
-        u_header += u'#        Name: %s\n' % self.u_name
-        u_header += u'# Description: %s\n' % self.u_description
-        u_header += u'#     Version: %s\n' % self.u_version
-        u_header += u'#     Comment: %s\n' % self.u_comment
-        u_header += u'#      Author: %s\n' % self.u_author
-        u_header += u'#\n'
-
-        u_header += u'# Id\t'
-        u_header += u'Name\t'
-        u_header += u'Description\t'
-        u_header += u'Year\t'
-        u_header += u'Manufacturer\n'
-
-        o_file.write(u_header.encode('utf8', 'strict'))
-
-        for o_game in self:
-            u_line = u'%s\t%s\t%i\t%s\n' % (o_game.u_id,
-                                            o_game.u_description,
-                                            o_game.i_year,
-                                            o_game.u_manufacturer)
-
-            o_file.write(u_line.encode('utf8', 'strict'))
-
-    def _export_to_mini(self, o_file):
-        """
-        Method to export the game container to a mini-format that will just contain a header indicating which dat file
-        the data comes from and a list of games containg just: a) the id of the game, b) the description of the game.
-
-        :param o_file: Name of the file to write. i.e. '/home/john/my_games.txt'
-
-        :return: Nothing.
-        """
-
-        u_header = u''
-        u_header += u'# File generated by romdats.py version %s\n' % _u_VERSION
-        u_header += u'#\n'
-        u_header += u'#        Name: %s\n' % self.u_name
-        u_header += u'# Description: %s\n' % self.u_description
-        u_header += u'#     Version: %s\n' % self.u_version
-        u_header += u'#     Comment: %s\n' % self.u_comment
-        u_header += u'#        Type: %s\n' % self.u_type
-        u_header += u'#      Author: %s\n' % self.u_author
-        u_header += u'#       Games: %i\n' % self.i_games
-        u_header += u'#%s\n' % (u'=' * 79)
-
-        for u_line in self._lu_log:
-            u_header += u'# %s\n' % u_line
-
-        u_header += u'#%s\n' % (u'=' * 79)
-        u_header += u'# Id\tTitle\n'
-        u_header += u'#%s\n' % (u'=' * 79)
-
-        o_file.write(u_header.encode('utf8', 'strict'))
-
-        for o_game in self:
-            u_line = u'%s\t%s\n' % (o_game.u_id.ljust(8), o_game.u_description)
-
-            o_file.write(u_line.encode('utf8', 'strict'))
-
     def _log(self, u_message):
         """
-        Method to internally log information about the manipulations suffered by the GameContainer
+        Method to internally log information about the manipulations suffered by the RomSetContainer
         :param u_message:
         :return:
         """
@@ -832,16 +753,16 @@ class GameContainer:
         self.lo_games.sort(key=lambda o_game: o_game.u_desc.encode('utf8', 'strict'), reverse=False)
 
 
-class Game:
+class RomSet(object):
 
     _i_id = 0
 
     def __init__(self, u_name, u_description):
 
-        Game._i_id += 1
+        RomSet._i_id += 1
 
         # Variable definition
-        self._i_id = Game._i_id  # Position number. It will be 0, 1, 2, 3... for the consecutive games in the dat.
+        self._i_id = RomSet._i_id  # Position number. It will be 0, 1, 2, 3... for the consecutive games in the dat.
         self.i_roms = 0              # Number of ROMs that make the full game.
         self.i_year = 0              # Year the game was published in (MAME dat support only, AFAIK).
         self.lo_roms = []            # List containing all the ROM information objects.
@@ -860,7 +781,7 @@ class Game:
 
     def __str__(self):
         u_output = u''
-        u_output += u'[Game]\n'
+        u_output += u'[RomSet]\n'
         u_output += u'  u_name: %s\n' % self.u_name
         u_output += u'  u_desc: %s\n' % self.u_desc
         u_output += u'  i_year: %i\n' % self.i_year
@@ -897,28 +818,12 @@ class Game:
 
         return u_output.encode('utf8')
 
-    def export(self, u_format):
-        """
-        Method to export the data of a game to a particular format.
-
-        :param u_format:
-
-        :return:
-        """
-
-        if u_format == u'simple':
-            u_output = self._export_simple()
-        else:
-            raise Exception('Unknown export format for Game object "%s"' % u_format)
-
-        return u_output
-
-    def get_hashes(self, b_discard_irrelevant=False):
+    def _get_hash(self, pu_type='crc32', pb_clean=False):
         """
         Method to obtain the COMPOUND hash of the game. It means the hash of *all* the ROMs included in the game will be
         summed. For example, if the game contains two ROMs:
 
-            - Game A
+            - RomSet A
                 - ROM a1: CRC32 = 01020304
                 - ROM a2: CRC32 = 0a0b0c0d
 
@@ -929,7 +834,7 @@ class Game:
 
             1. Different hashing methods are used: crc32, md5, sha1
 
-            #TODO: Explain b_discard_irrelevant parameter
+            #TODO: Explain pb_clean parameter
 
             2. Only *relevant* ROMs are considered. For example, meta-data information is typically included in the form
                of .cue files for optical disc images. That information is not really included in the original media and
@@ -948,17 +853,14 @@ class Game:
         """
 
         # Initialization
-        i_crc32_base10_value = 0
-        i_md5_base10_value = 0
-        i_sha1_base10_value = 0
+        i_base10_value = 0
 
         # The first step is to create a list with the real ROMs, avoiding meta-data ones like .cue files
         lo_relevant_roms = []
 
         for o_rom in self.lo_roms:
-
             # If discard is not activated, every ROM will be considered
-            if not b_discard_irrelevant:
+            if not pb_clean:
                 lo_relevant_roms.append(o_rom)
 
             # In other case, ROMs are filtered based on the file extension
@@ -971,45 +873,33 @@ class Game:
 
         for o_rom in lo_relevant_roms:
 
-            #print o_rom
-
             # Rom hash addition
-            i_crc32_base10_value += int(o_rom.u_crc32, 16)
-            i_md5_base10_value += int(o_rom.u_md5, 16)
-            i_sha1_base10_value += int(o_rom.u_sha1, 16)
+            if pu_type == 'crc32':
+                i_base10_value += int(o_rom.u_crc32, 16)
+            elif pu_type == 'md5':
+                i_base10_value += int(o_rom.u_md5, 16)
+            elif pu_type == 'sha1':
+                i_base10_value += int(o_rom.u_sha1, 16)
+            else:
+                raise Exception('Invalid pu_type "%s"' % pu_type)
 
         # Converting base10 values to hex-string format
-        u_crc32 = '%x' % i_crc32_base10_value
-        u_md5 = '%x' % i_md5_base10_value
-        u_sha1 = '%x' % i_sha1_base10_value
+        u_hash = '%x' % i_base10_value
 
         # Resizing hashes to proper length (crc32 = 8 chars, md5 = 32 chars, sha1 = 40 chars)
-        u_crc32 = u_crc32[-8:]
-        u_crc32 = u_crc32.ljust(8, '0')
+        if pu_type == 'crc32':
+            i_hash_length = 8
+        elif pu_type == 'md5':
+            i_hash_length = 32
+        elif pu_type == 'sha1':
+            i_hash_length = 40
+        else:
+            raise Exception('Invalid pu_type "%s"' % pu_type)
 
-        u_md5 = u_md5[-32:]
-        u_md5 = u_md5.ljust(32, '0')
+        u_hash = u_hash[-i_hash_length:]
+        u_hash = u_hash.ljust(i_hash_length, '0')
 
-        u_sha1 = u_sha1[-40:]
-        u_sha1 = u_sha1.ljust(40, '0')
-
-        #print 'crc32: %s' % u_crc32
-        #print '  md5: %s' % u_md5
-        #print ' sha1: %s' % u_sha1
-
-        return {'u_crc32': u_crc32, 'u_md5': u_md5, 'u_sha1': u_sha1}
-
-    def _export_simple(self):
-        """
-        Method to export the games in the most simple way possible, just the identification and the name separated by a
-        tabulator.
-
-        :return: The above data in unicode encoding, almost ready to be printed or saved to disk.
-        """
-
-        u_output = '%s\t%s' % (self.u_id, self.u_name)
-
-        return u_output
+        return u_hash
 
     def set_id(self, s_mode):
         """
@@ -1071,6 +961,32 @@ class Game:
             s_output = 'Unknown identification method for a game object "%s".' % s_mode
             raise Exception(s_output)
 
+    # Properties with a bit of code behind
+    def _get_ccrc32(self):
+        return self._get_hash(pu_type='crc32', pb_clean=True)
+
+    def _get_dcrc32(self):
+        return self._get_hash(pu_type='crc32', pb_clean=False)
+
+    def _get_cmd5(self):
+        return self._get_hash(pu_type='md5', pb_clean=True)
+
+    def _get_dmd5(self):
+        return self._get_hash(pu_type='md5', pb_clean=False)
+
+    def _get_csha1(self):
+        return self._get_hash(pu_type='sha1', pb_clean=True)
+
+    def _get_dsha1(self):
+        return self._get_hash(pu_type='sha1', pb_clean=False)
+
+    u_ccrc32 = property(fget=_get_ccrc32, fset=None)
+    u_dcrc32 = property(fget=_get_dcrc32, fset=None)
+    u_cmd5 = property(fget=_get_cmd5, fset=None)
+    u_dmd5 = property(fget=_get_dmd5, fset=None)
+    u_csha1 = property(fget=_get_csha1, fset=None)
+    u_dsha1 = property(fget=_get_dsha1, fset=None)
+
 
 class _Rom:
     """
@@ -1100,6 +1016,45 @@ class _Rom:
         return u_output.encode('utf8')
 
 
+# Functions
+#=======================================================================================================================
+def get_rom_header(pu_rom_file):
+    """
+    Function to return the year(s) found in a rom file.
+
+    Only the first bytes of the ROM are scanned and only years 19xx and 20xx are searched for.
+
+    :param pu_rom_file: Name of the file to search in.
+
+    :return: A list with the found years as integers.
+    """
+
+    i_bytes = 2048
+    i_min_year = 1970
+    i_max_year = 2020
+
+    li_years = []
+    li_years_clean = []
+
+    o_file = open(pu_rom_file, mode='rb')
+    s_data_chunk = o_file.read(i_bytes)
+    o_file.close()
+
+    o_match = re.search(r'(\d{4})', s_data_chunk)
+
+    if o_match:
+        for s_year in o_match.groups():
+            li_years.append(int(s_year))
+
+    for i_year in li_years:
+        if i_min_year <= i_year <= i_max_year:
+            li_years_clean.append(i_year)
+
+    return li_years_clean
+
+
+# Helper Functions
+#=======================================================================================================================
 def _dat_vertical_parse(ls_lines, s_section, s_mode='single'):
     """Function to parse a group of lines which contains different information about the same item.
 
@@ -1211,4 +1166,3 @@ def _sum_crc32(u_crc32_a, u_crc32_b):
     u_crc32_sum = str(h_crc32_sum)[2:].rjust(8, '0')[-8:]
 
     return u_crc32_sum
-

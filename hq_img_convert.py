@@ -77,15 +77,16 @@ def _get_cmd_options():
                                    'example "output.png" will produce a png file. When you are converting a whole '
                                    'directory of images, the output file name for each of the files will be the source'
                                    'file name; so the parameter "-e" allows you to change the extension.')
-    o_arg_parser.add_argument('-f',
+    o_arg_parser.add_argument('-o',
                               action='store',
                               default='0,0',
-                              help='Focus point relative coordinates x,y. i.e. "-f 0.0,1.0" would be bottom-left '
-                                   'corner.')
-    o_arg_parser.add_argument('-b',
+                              help='Options. i.e. "-o 1+0,2+1". They will mean something totally different depending '
+                                   'on the mode chosen. For example, in "frame" mode, you can select the position of '
+                                   'the brightness.')
+    o_arg_parser.add_argument('-c',
                               action='store',
-                              default='#808080ff',
-                              help='Background hex color in RGBA format. i.e. "-b ff000080".')
+                              default='80808000',
+                              help='Color in RGBA hex format. i.e. "-c ff000080".')
     o_arg_parser.add_argument('-r',
                               action='store',
                               default='0+0',
@@ -194,10 +195,10 @@ def _get_cmd_options():
 
     # Background color
     #-----------------
-    u_bgcolor = o_args.b.strip()
+    u_bgcolor = o_args.c.strip()
 
     if u_bgcolor.lower() == _parse_color(u_bgcolor):
-        o_graph_cfg.u_bgcolor = u_bgcolor
+        o_graph_cfg.u_color = u_bgcolor
         u_msg = u'%s %s' % (libs.cons.u_OK_TEXT, u_bgcolor)
     else:
         i_cmd_errors += 1
@@ -216,19 +217,20 @@ def _get_cmd_options():
 
     u_output += u'  G_EXT: %s\n' % u_msg
 
-    # Focus
-    #------
-    u_focus = o_args.f.strip()
+    # Options
+    #--------
+    u_options = o_args.o.strip()
 
     try:
-        o_focus = libs.geom.Coord(pu_string=u_focus)
-        o_graph_cfg.tf_focus = (o_focus.f_x, o_focus.f_y, o_focus.f_dx, o_focus.f_dy)
-        u_msg = u'%s %.2f±%.2f, %.2f±%.2f' % (libs.cons.u_OK_TEXT, o_focus.f_x, o_focus.f_dx, o_focus.f_y, o_focus.f_dy)
+        o_options = libs.geom.Coord(pu_string=u_options)
+        o_graph_cfg.tf_options = (o_options.f_x, o_options.f_y, o_options.f_dx, o_options.f_dy)
+        u_msg = u'%s %.2f±%.2f, %.2f±%.2f' % (libs.cons.u_OK_TEXT, o_options.f_x, o_options.f_dx,
+                                              o_options.f_y, o_options.f_dy)
     except ValueError:
         i_cmd_errors += 1
-        u_msg = u'%s %s - Unknown format' % (libs.cons.u_ER_TEXT, u_focus)
+        u_msg = u'%s %s - Unknown format' % (libs.cons.u_ER_TEXT, u_options)
 
-    u_output += u'  G_FOC: %s\n' % u_msg
+    u_output += u'  G_OPT: %s\n' % u_msg
 
     # Rotation
     #---------
@@ -281,7 +283,9 @@ def _parse_color(pu_string):
     """
     u_pattern = r'([0-9a-f]{8})|([0-9a-f]{6})'
     o_match = re.search(u_pattern, pu_string, flags=0)
-    return o_match.group()
+
+    if o_match:
+        return o_match.group()
 
 
 def img_convert(pu_mode=None, po_src_file=None, po_dst_file=None, po_cfg=o_IMG_CONV_DEF_CFG):

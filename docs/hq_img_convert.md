@@ -1,8 +1,28 @@
-hq_img_convert effects
-======================
+*hq_img_convert* Command Line Usage
+===================================
 
-1. Parameters
--------------
+1. Mandatory Parameters
+-----------------------
+
+{mode} src dst
+
+* `{mode}`, it's the name of the modification to be applied to the source image (or directory). The available modes at
+  this moment are `frame`, `hbars`, `magcover`, `mosaic`, `vbars`. You can see a description of them below in Section 3.
+
+* `src`, it's the source image or directory of images to be modified. i.e. `/home/john/pictures/my_cat.jpg` if you
+  want to modify a single picture or `/home/john/pictures` if you want to modify all the pictures contained in one
+  directory.
+  
+* `dst`, it's the destination image or directory to put the images in. i.e. `/home/john/modified_imgs/cat.gif`
+  or `/home/john/modified_imgs`.
+
+For example:
+
+    hq_img_convert.py vbars /home/john/pictures/my_cat.jpg /tmp/modified_picture_of_my_cat.gif
+
+
+2. Optional Parameters
+----------------------
 
 * `-a [width],[height]`, aspect ratio. Controls the width/height proportions of the image. i.e. `-a 16,9` for typical
   TV panoramic images.
@@ -26,18 +46,18 @@ hq_img_convert effects
   options; then, an extra frame is added around the image and it's rotated. Both modifications increase the final size.
 
 
-2. Modes
+3. Modes
 --------
 
 ### 1. *frame* - Picture frame
 
-![Frame effect example](images/frame_src_dst.png)  
+![frame effect](images/frame_src_dst.png)  
 *mosaic - Original and converted image*
 
   * `-c` controls the background color.
   
-  * `-o` controls the location of the soft bright point into the image. 0.0,0.0 is the top-left corner and 1.0,1.0 is the
-     bottom-right corner.
+  * `-o` controls the location of the soft bright point into the image. 0.0,0.0 is the top-left corner and 1.0,1.0 is
+    the bottom-right corner.
      
   * `-s` controls the size of the picture itself. Notice the frame, the shadow, and the rotation will increase the final
     size of the image.
@@ -55,21 +75,23 @@ The process followed by the image is:
   4. Image shadow is generated (you don't have control over this process).
   5. Background color is placed (`-c 7ec7a1`).
 
+
 ### 2. *hbars* - Horizontal bars
 
-* `-c` controls the overlay color. So, for example, `-c ff0000` would mean the whole image is covered with red while (so
-  you'll only see a completely red image) and `-c ff000080` would cover the image with half-transparent red.
-
-* `-o` controls the number of colors and the number of bars. i.e. `-o 4,12` would produce 12 vertical bars of 4 colors. 
-
-* `-r` controls de rotation of the bars. The bars are vertical in the original image, but then they are rotated before
-  being applied to the final image.
-  
-* `-s` is the final size of the image. Aspect ratio won't be preserved so the vertical bars will always cover the entire
-  size given.
-
-![Alt](images/hbars_src_dst.png)  
+![hbars effect](images/hbars_src_dst.png)  
 *hbars - original and converted image*
+
+  * `-c` controls the overlay color. So, for example, `-c ff0000` would mean the whole image is covered with red while
+    (so you'll only see a completely red image) and `-c ff000080` would cover the image with half-transparent red.
+
+  * `-o` controls the number of colors and the number of bars. i.e. `-o 4,12` would produce 12 vertical bars of 4
+    colors. 
+
+  * `-r` controls de rotation of the bars. The bars are vertical in the original image, but then they are rotated before
+    being applied to the final image.
+  
+  * `-s` is the final size of the image. Aspect ratio won't be preserved so the vertical bars will always cover the entire
+    size given.
 
 Example:
 
@@ -82,10 +104,13 @@ The process followed by the image is:
   3. Image is rotated 2º anticlockwise (`-r 2`) and scaled until it completely fills 640x480 pixels.
   4. Image is cropped to final size, 640x480 pixels (`-s 640,480`).
 
+
 ### 3. *magcover* - Magazine cover
 
 ![magcover effect](images/magcover_src_dst.png)  
 *magcover - original and converted image*
+
+  * `-c` controls the background color.
 
 Example:
 
@@ -99,10 +124,21 @@ The process followed by the image is:
   4. Grey background color is applied (`-c c0c0c0`).
 
 
-### 4. *mosaic*
+### 4. *mosaic* - Mosaic of pixels
 
-![Alt](images/mosaic_src_dst.png)  
+![mosaic effect](images/mosaic_src_dst.png)  
 *hbars - original and converted image*
+
+  * `-c` controls the overlay color. So, for example, `-c ff0000` would mean the whole image is covered with red while
+    (so you'll only see a completely red image) and `-c ff000080` would cover the image with half-transparent red.
+
+  * `-o` controls the number of colors and the number of pixels in the shortest side of the image. The longest side will
+    have as many pixels as required to preserve the aspect ratio. i.e. `-o 4,12` would produce 12 vertical bars of 4
+    colors. 
+
+  * `-r` controls de rotation of the mosaic.
+  
+  * `-s` is the final size of the image.
 
 Example:
 
@@ -119,19 +155,20 @@ The process followed by the image is:
 
 ### 5. *vbars* - Vertical bars
 
-* `-c` controls the overlay color. So, for example, `-c ff0000` would mean the whole image is covered with red while (so
-  you'll only see a completely red image) and `-c ff000080` would cover the image with half-transparent red.
-
-* `-o` controls the number of colors and the number of bars. i.e. `-o 4,12` would produce 12 vertical bars of 4 colors. 
-
-* `-r` controls de rotation of the bars. The bars are vertical in the original image, but then they are rotated before
-  being applied to the final image.
-  
-* `-s` is the final size of the image. Aspect ratio won't be preserved so the vertical bars will always cover the entire
-  size given.
-
-![Vertical bars effect example](images/vbars_src_dst.png)  
+![vbars effect example](images/vbars_src_dst.png)  
 *vbars - original and converted image*
+
+  * `-c` controls the overlay color. So, for example, `-c ff0000` would mean the whole image is covered with red while
+    (so you'll only see a completely red image) and `-c ff000080` would cover the image with half-transparent red.
+
+  * `-o` controls the number of colors and the number of bars. i.e. `-o 4,12` would produce 12 vertical bars of 4
+    colors. 
+
+  * `-r` controls de rotation of the bars. The bars are vertical in the original image, but then they are rotated before
+    being applied to the final image.
+  
+  * `-s` is the final size of the image. Aspect ratio won't be preserved so the vertical bars will always cover the entire
+    size given.
 
 Example:
     
@@ -143,3 +180,17 @@ The process followed by the image is:
   2. 12.5% opaque red (#ff000020) is overlaid (`-c ff000020`).
   3. Image is rotated 10º clockwise (`-r 10`) and scaled until it completely fills 640x480 pixels.
   4. Image is cropped to final size, 640x480 pixels (`-s 640,480`).
+
+
+------
+
+*hq_img_convert* Python Function Usage
+======================================
+
+    img_convert(pu_mode=None, po_src_file=None, po_dst_file=None, po_cfg=o_IMG_CONV_DEF_CFG):
+    
+  * `pu_mode`, mode name. Valid options are the same as the command line tool: `frame`, `hbars`, `magcover`, `mosaic`,
+    and `vbars`.
+  
+  (WIP)
+    

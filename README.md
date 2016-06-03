@@ -7,8 +7,6 @@ Installation
 
 2. Uncompress the package wherever you want.
 
-3. Create
-
 
 HQ Copy (hq_copy.py)
 ====================
@@ -61,7 +59,7 @@ step, you rename your clean crc32 files to title mode:
 Then you can rename the title files from the intermediate path to your final path using dirty hashes:
 
     hqrename Dtc dat_file intermediate_path destination_path
-    
+
 
 HQ Image Convert (hq_img_convert.py)
 ====================================
@@ -98,7 +96,7 @@ Optional arguments:
                       extension.
 * `-f F`              Focus point relative coordinates x, y. i.e. `-f 0.0,1.0` would be bottom-left corner.
 
-* `-b B`              Background hex color in RGBA format. i.e. `-b ff000080`.
+* `-c C`              Color in hex RGBA format. i.e. `-b ff000080`.
 
 * `-r R`              Image rotation. i.e. `-r 15+5` will be a rotation of 15 degrees anticlockwise plus a random
                       rotation of +/- 5 degrees.

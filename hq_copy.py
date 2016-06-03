@@ -20,7 +20,7 @@ import sys
 u_CWD = os.path.dirname(os.path.realpath(__file__))
 
 from hqlib import romdats
-#romdats = imp.load_source(u'romdats', os.path.join(u_CWD, 'hqlib', 'romdats.py'))
+#romdats = imp.load_source(u'romdats', os.path.join(u_CWD, 'hqlib', 'roms.py'))
 
 import libs
 
@@ -307,7 +307,7 @@ def hq_copy(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b
             lu_ren_files.append(o_src_file_object.u_file)
 
             if u_dst_fmt in ('c', 'm', 's'):
-                du_hashes = o_game.get_hashes(b_discard_irrelevant=b_clean_hash)
+                du_hashes = o_game._get_hash(pb_clean=b_clean_hash)
                 u_output_name = du_hashes[du_FORMATS[u_dst_fmt]]
             else:
                 u_output_name = o_game.u_description
