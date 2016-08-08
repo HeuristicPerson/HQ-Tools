@@ -21,11 +21,11 @@ class FilePath(object):
 
     def __str__(self):
         u_output = u'<FilePath>\n'
-        u_output += u'  .u_path: %s\n' % self.u_path
-        u_output += u'  .u_root: %s\n' % self.u_root
-        u_output += u'  .u_file: %s\n' % self.u_file
-        u_output += u'  .u_name: %s\n' % self.u_name
-        u_output += u'  .u_format:  %s\n' % self.u_ext
+        u_output += u'  .u_path:   %s\n' % self.u_path
+        u_output += u'  .u_root:   %s\n' % self.u_root
+        u_output += u'  .u_file:   %s\n' % self.u_file
+        u_output += u'  .u_name:   %s\n' % self.u_name
+        u_output += u'  .u_format: %s\n' % self.u_ext
 
         return u_output.encode('utf8')
 
@@ -57,30 +57,48 @@ class FilePath(object):
         o_abs_file = FilePath(u_abs_path)
         return o_abs_file
 
-    def content(self, b_recursive=False):
+    def content(self, pb_recursive=False, pu_mode='all'):
         """
         Method that returns a list with the contents of the file object. If the file object is a file, the content will
         be always empty since a file doesn't contain other files or directories.
 
-        :param b_recursive: If True, the content search will be recursive.
+        :param pb_recursive: If True, the content search will be recursive.
 
         :return: A list of FilePath objects
         """
 
-        lo_file_objects = []
+        lo_raw_file_objects = []
 
         if self.is_dir():
-            if not b_recursive:
+            if not pb_recursive:
                 for u_element in os.listdir(self.u_path):
                     u_full_path = os.path.join(self.u_path, u_element)
                     o_file_object = FilePath(u_full_path)
-                    lo_file_objects.append(o_file_object)
+                    lo_raw_file_objects.append(o_file_object)
 
             else:
-                #TODO: Add recursive mode
-                pass
+                for u_root, lu_dirs, lu_files in os.walk(self.u_path):
+                    lu_elements = lu_dirs + lu_files
+                    for u_element in lu_elements:
+                        u_full_path = os.path.join(u_root, u_element)
+                        o_fp = FilePath(u_full_path)
+                        lo_raw_file_objects.append(o_fp)
 
-        return lo_file_objects
+        lo_clean_file_objects = []
+        for o_element_fp in lo_raw_file_objects:
+            b_valid = False
+
+            if pu_mode == 'all':
+                b_valid = True
+            if pu_mode == 'dirs' and o_element_fp.is_dir():
+                b_valid = True
+            elif pu_mode == 'files' and o_element_fp.is_file():
+                b_valid = True
+
+            if b_valid:
+                lo_clean_file_objects.append(o_element_fp)
+
+        return lo_clean_file_objects
 
     def exists(self):
         """
@@ -166,6 +184,41 @@ class FilePath(object):
             b_is_file = False
 
         return b_is_file
+
+    def get_file_in_subdirs(self, pu_file, *subdirs):
+        """
+        Method to get the first appearance of a file in certain list of subdirs.
+
+        For example, if we have:
+
+            folder_1
+                aaa.png
+            folder_2
+                aaa.png
+
+        And we call .get_file_in_subdirs('aaa.png', 'folder_1', 'folder_2'). The fp object of folder_1/aaa.png will be
+        returned.
+
+        :type pu_file: unicode Name of the file to search for.
+
+        :type subdirs: unicode Name of the directories to search for by the order we want to search.
+
+        :return: The first matched FilePath object if the file exists, None in other case.
+        """
+        if self.is_file():
+            raise ValueError
+        else:
+            o_matched_fp = None
+            for u_subdir in subdirs:
+                o_candidate_fp = FilePath(self.u_path, u_subdir, pu_file)
+                print o_candidate_fp
+                if o_candidate_fp.is_file():
+                    o_matched_fp = o_candidate_fp
+                    break
+
+            return o_matched_fp
+
+
 
 
 def get_cwd():

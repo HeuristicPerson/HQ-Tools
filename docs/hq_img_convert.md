@@ -36,8 +36,9 @@ For example:
   when you work with directories, you can use `-e` option to choose the format. i.e
   `hq_img_convert -e gif src_dir dst_dir`.
 
-* `-o [A,B]`, two options where A and B are float numbers. They mean different things for each mode. i.e. in `hbars`
-  mode you can select the number of bars and the number of colors like `-o [colors],[bars]`.
+* `-o [A,B]`, two options where A and B are float numbers including randomness i.e. 4.5+0.3,0.1+0.1. They mean different
+  things for each mode. i.e. in `hbars` mode you can select the number of bars and the number of colors like
+  `-o [colors],[bars]`.
 
 * `-r`, clockwise rotation angle in degrees. i.e. `-r 15.2`.
 
@@ -49,7 +50,21 @@ For example:
 3. Modes
 --------
 
-### 1. *frame* - Picture frame
+### 1. *enclose* - Image enclose
+
+  * `-c` controls de background color.
+
+  * `-o` controls the centering of the original image. 0.5,0.5 indicates that the extra space around de image (to be
+    removed or added) will be equally distributed all around. 0.5,1.0 would indicate that the image would remain
+    horizontally centered (0.5 space removed/added to the left) and aligned to the bottom since all the extra vertical
+    space will be removed/added to the top. As usual, you can add random values, i.e. 0.5+0.1,0.5+0.2
+    
+  * `-s` controls the final size of the canvas.
+
+Example:
+    hq_img_convert.py enclose -c 300000 -o 0.5,0.3
+
+### 2. *frame* - Picture frame
 
 ![frame effect](images/frame_src_dst.png)  
 *mosaic - Original and converted image*
@@ -76,7 +91,7 @@ The process followed by the image is:
   5. Background color is placed (`-c 7ec7a1`).
 
 
-### 2. *hbars* - Horizontal bars
+### 3. *hbars* - Horizontal bars
 
 ![hbars effect](images/hbars_src_dst.png)  
 *hbars - original and converted image*
@@ -105,7 +120,7 @@ The process followed by the image is:
   4. Image is cropped to final size, 640x480 pixels (`-s 640,480`).
 
 
-### 3. *magcover* - Magazine cover
+### 4. *magcover* - Magazine cover
 
 ![magcover effect](images/magcover_src_dst.png)  
 *magcover - original and converted image*
@@ -124,10 +139,10 @@ The process followed by the image is:
   4. Grey background color is applied (`-c c0c0c0`).
 
 
-### 4. *mosaic* - Mosaic of pixels
+### 5. *mosaic* - Mosaic of pixels
 
 ![mosaic effect](images/mosaic_src_dst.png)  
-*hbars - original and converted image*
+*mosaic - original and converted image*
 
   * `-c` controls the overlay color. So, for example, `-c ff0000` would mean the whole image is covered with red while
     (so you'll only see a completely red image) and `-c ff000080` would cover the image with half-transparent red.
@@ -153,7 +168,7 @@ The process followed by the image is:
   4. Image is resized to final size of 640x480 pixels (`-s 640,480`).
 
 
-### 5. *vbars* - Vertical bars
+### 6. *vbars* - Vertical bars
 
 ![vbars effect example](images/vbars_src_dst.png)  
 *vbars - original and converted image*

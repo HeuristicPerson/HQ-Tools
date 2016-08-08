@@ -9,35 +9,49 @@ Clean mode, meta-data files not actually present in the real disc (.cue files) w
 """
 
 import argparse
-import imp
-# TODO: Remove os dependency and use files.py from libs instead
-import os
+import os         # I use os only to remove files so maybe it's a waste of memory
 import re
 import shutil
 import sys
 
+from libs import cons
+from libs import files
+from libs import strings
+from libs import time
 
-u_CWD = os.path.dirname(os.path.realpath(__file__))
+from libs.roms import RomSetContainer
 
-from hqlib import romdats
-#romdats = imp.load_source(u'romdats', os.path.join(u_CWD, 'hqlib', 'roms.py'))
 
-import libs
+# CLASSES
+#=======================================================================================================================
+class SingleMode:
+    def __init__(self, pu_desc=u'', ps_field=''):
+        self.u_desc = pu_desc
+        self.u_field = ps_field
 
 
 # CONSTANTS
 #=======================================================================================================================
-du_FORMATS = {'c': 'crc32', 'm': 'md5', 's': 'sha1', 't': 'description'}
+du_HASH_MODE = {'': u'', 'c': u'clean ', 'd': u'dirty'}
+du_HASH = {'C': u'crc32', 'M': u'md5', 'S': u'sha1', 'T': u'description'}
 u_PROG_NAME = u'HQ COPY'
 u_PROG_VER = u'v2015.10.11'
 
-lu_valid_modes = []
-for u_1st_char in ('C', 'D'):
-    for u_2nd_char in du_FORMATS.keys():
-        for u_3rd_char in du_FORMATS.keys():
-            lu_valid_modes.append('%s%s%s' % (u_1st_char, u_2nd_char, u_3rd_char))
+lu_VALID_MODES = []
+do_valid_single_modes = {'cC': SingleMode(pu_desc=u'clean CRC32', ps_field='u_ccrc32'),
+                         'cM': SingleMode(pu_desc=u'clean MD5', ps_field='u_cmd5'),
+                         'cS': SingleMode(pu_desc=u'clean SHA1', ps_field='u_csha1'),
+                         'dC': SingleMode(pu_desc=u'dirty CRC32', ps_field='u_dcrc32'),
+                         'dM': SingleMode(pu_desc=u'dirty MD5', ps_field='u_dmd5'),
+                         'dS': SingleMode(pu_desc=u'dirty SHA1', ps_field='u_dsha1'),
+                         'T': SingleMode(pu_desc=u'Title', ps_field='u_desc')}
+lu_valid_single_modes = sorted(do_valid_single_modes.keys(), key=lambda u_element: u_element.lower())
+#lu_valid_single_modes.sort()
 
-tu_valid_modes = tuple(lu_valid_modes)
+for u_head in do_valid_single_modes.keys():
+    for u_tail in do_valid_single_modes.keys():
+        if u_head != u_tail:
+            lu_VALID_MODES.append('%s%s' % (u_head, u_tail))
 
 
 # HELPER FUNCTIONS
@@ -56,12 +70,13 @@ def _get_cmd_options():
                               help='Simulation mode; files won\'t be copied.')
     o_arg_parser.add_argument('mode',
                               action='store',
-                              choices=tu_valid_modes,
-                              metavar='[DC][cmst][cmst]',
-                              help='Renaming mode. 1st letter specifies the usage of clean (C) or dirty (D) hashes. '
-                                   '2nd and 3rd letter specify the source and destination format: crc32 (c), md5 (m), '
-                                   'sha1 (s), and hq_title (t). i.e. "Dct" will use dirty hashes to copy files from '
-                                   'crc32 naming scheme to real hq_title scheme.')
+                              choices=lu_VALID_MODES,
+                              metavar='2x[%s]' % u','.join(lu_valid_single_modes),
+                              help='Renaming mode, source and destination. First two letters (or one for title) '
+                                   'specify the source format: clean CRC32 (cC), clean MD5 (cM), clean SHA1 (cS), dirty'
+                                   'CRC32 (dC), dirty MD5 (dM), dirty SHA1 (dS), or title (T). Second two letters '
+                                   'indicate the destination format in the same format i.e. "dCT" will use dirty '
+                                   'hashes to copy files from dirty CRC32 naming scheme to real Title.')
     o_arg_parser.add_argument('dat',
                               action='store',
                               help='Source dat file. i.e. "/home/john/snes.dat"')
@@ -85,64 +100,49 @@ def _get_cmd_options():
     # Validating simulation mode
     b_simulation = o_args.s
     if b_simulation:
-        u_text_output += '   SIM: %s simulation is ON, files won\'t be copied\n' % libs.cons.u_OK_TEXT
+        u_text_output += '   SIM: %s simulation is ON, files won\'t be copied\n' % cons.u_OK_TEXT
 
     # Validating rename mode
-    if o_args.mode[0] == 'C':
-        b_clean_hash = True
-    else:
-        b_clean_hash = False
+    o_matches = re.match(r'([dc]?[CMST])([dc]?[CMST])', o_args.mode)
 
-    u_src_format = o_args.mode[1]
-    u_dst_format = o_args.mode[2]
+    u_src_format = o_matches.group(1)
+    u_dst_format = o_matches.group(2)
 
-    u_extra_src_mode = u''
-    u_extra_dst_mode = u''
-
-    if u_src_format != 't':
-        if b_clean_hash:
-            u_extra_src_mode = u'clean '
-        else:
-            u_extra_src_mode = u'dirty '
-
-    if u_dst_format != 't':
-        if b_clean_hash:
-            u_extra_dst_mode = u'clean '
-        else:
-            u_extra_dst_mode = u'dirty '
-
-    u_text_output += u'  MODE: %s %s%s -> %s%s\n' % (libs.cons.u_OK_TEXT,
-                                                     u_extra_src_mode,
-                                                     du_FORMATS[u_src_format],
-                                                     u_extra_dst_mode,
-                                                     du_FORMATS[u_dst_format])
+    u_text_output += u'  MODE: %s %s (%s) -> %s (%s)\n' % (cons.u_OK_TEXT,
+                                                           u_src_format,
+                                                           do_valid_single_modes[u_src_format].u_desc,
+                                                           u_dst_format,
+                                                           do_valid_single_modes[u_dst_format].u_desc)
 
     # Validating dat file
     u_dat_file = o_args.dat.decode('utf8')
-    if os.path.isfile(u_dat_file):
-        u_dat_found = libs.cons.u_OK_TEXT
+    o_dat_file_fp = files.FilePath(u_dat_file)
+    if o_dat_file_fp.is_file():
+        u_dat_found = cons.u_OK_TEXT
     else:
-        u_dat_found = libs.cons.u_ER_TEXT
+        u_dat_found = cons.u_ER_TEXT
         i_errors += 1
 
     u_text_output += u'   DAT: %s %s\n' % (u_dat_found, u_dat_file)
 
     # Validating source path
     u_src_path = o_args.source.decode('utf8')
-    if os.path.exists(u_src_path):
-        u_src_found = libs.cons.u_OK_TEXT
+    o_src_fp = files.FilePath(u_src_path)
+    if o_src_fp.exists():
+        u_src_found = cons.u_OK_TEXT
     else:
-        u_src_found = libs.cons.u_ER_TEXT
+        u_src_found = cons.u_ER_TEXT
         i_errors += 1
 
     u_text_output += u'   SRC: %s %s\n' % (u_src_found, u_src_path)
 
     # Validating destination path
     u_dst_path = o_args.destination.decode('utf8')
-    if os.path.isdir(u_dst_path):
-        u_dst_found = libs.cons.u_OK_TEXT
+    o_dst_fp = files.FilePath(u_dst_path)
+    if o_dst_fp.is_dir():
+        u_dst_found = cons.u_OK_TEXT
     else:
-        u_dst_found = libs.cons.u_ER_TEXT
+        u_dst_found = cons.u_ER_TEXT
         i_errors += 1
 
     u_text_output += u'   DST: %s %s\n' % (u_dst_found, u_dst_path)
@@ -158,10 +158,10 @@ def _get_cmd_options():
         try:
             u_regex = u_regex_data.rpartition(u',')[0]
             i_regex_group = int(u_regex_data.rpartition(u',')[2])
-            u_text_output += u'  REXP: %s #%i in "%s"\n' % (libs.cons.u_OK_TEXT, i_regex_group, u_regex)
+            u_text_output += u'  REXP: %s #%i in "%s"\n' % (cons.u_OK_TEXT, i_regex_group, u_regex)
 
-        except (ValueError, IndexError) as o_exception:
-            u_text_output += u'  REXP: %s Wrong regular expression data "%s"\n' % (libs.cons.u_ER_TEXT, u_regex_data)
+        except (ValueError, IndexError):
+            u_text_output += u'  REXP: %s Wrong regular expression data "%s"\n' % (cons.u_ER_TEXT, u_regex_data)
             i_errors += 1
 
     if i_errors:
@@ -172,8 +172,7 @@ def _get_cmd_options():
     if i_errors:
         sys.exit()
 
-    return {'b_clean_hash': b_clean_hash,
-            'b_simulation': b_simulation,
+    return {'b_simulation': b_simulation,
             'u_dat_file': u_dat_file,
             'u_src_path': u_src_path,
             'u_dst_path': u_dst_path,
@@ -207,8 +206,8 @@ def _regex_catcher(u_text, u_pattern=None, i_group=None):
 
 # MAIN FUNCTION
 #=======================================================================================================================
-def hq_copy(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b_clean_hash=False, b_sim=False,
-            b_print=False, u_regex_pattern=None, i_regex_group=None):
+def hq_copy(po_dat=None, pu_src_path='', pu_dst_dir='', pu_src_fmt='', pu_dst_fmt='', pb_sim=False,
+            pi_print_mode=0, u_regex_pattern=None, i_regex_group=None, pb_del_src=False):
     """
     Renaming function for files and directories. Valid formats are crc32, md5, sha1 and real hq_title.
 
@@ -225,62 +224,62 @@ def hq_copy(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b
 
     The output of the function is... # TODO
 
-    :param u_dat: Dat file to use for renaming. i.e. '/home/charles/dat_files/snes.dat'
+    :param pu_dat: Dat file to use for renaming. i.e. '/home/charles/dat_files/snes.dat'
 
-    :param u_src_path: Source file (or directory) to be renamed. i.e. '/home/ann/my_files/' or '/home/metroid (eur).jpg'
+    :param pu_src_path: Source file (or directory) to be renamed. i.e. '/home/ann/my_files/' or '/home/metroid (eur).jpg'
 
-    :param u_dst_dir: Directory where to write the renamed file. i.e. '/home/jonh/renamed_files'
+    :param pu_dst_dir: Directory where to write the renamed file. i.e. '/home/jonh/renamed_files'
 
-    :param b_clean_hash: Indicates if clean hashes (omitting .cue files, for example) should be obtained from dat file
+    :param pb_clean_hash: Indicates if clean hashes (omitting .cue files, for example) should be obtained from dat file
                          when comparing file names or, instead, full dirty hashes should be used instead (default).
 
-    :param b_sim: Simulation mode. If True, files won't be actually copied.
+    :param pb_sim: Simulation mode. If True, files won't be actually copied.
 
     :param u_regex_pattern: Regex pattern to allow the renaming of files that contain the expected name (crc32, md5...)
                             PLUS extra information. i.e. "012345687 - foo.gif".
 
     :param i_regex_group: Number of the group to catch
 
+    :type i_print_mode int: 0-> No print at all, 1-> Print in single line mode, 2-> Print in persistent mode.
+
     :return: Statistics about the renaming process.
     """
 
-    o_start = libs.time.now()
+    o_start = time.now()
 
     # Extra parameters check is needed in case the hq_copy function is called from another program because argument
     # check is valid just when you directly call this program from command line.
-    if not os.path.isfile(u_dat):
-        raise Exception('Dat file "%s" not found' % u_dat)
+    # TODO: Add a check that po_dat is a RomSetContainer instance.
 
-    if not os.path.exists(u_src_path):
-        raise Exception('Source path "%s" not found' % u_src_path)
+    o_src_fp = files.FilePath(pu_src_path)
+    if not o_src_fp.exists():
+        raise Exception('Source path "%s" not found' % pu_src_path)
 
-    if not os.path.isdir(u_dst_dir):
-        raise Exception('Destination dir "%s" not found' % u_dst_dir)
+    o_dst_fp = files.FilePath(pu_dst_dir)
+    if not o_dst_fp.is_dir():
+        raise Exception('Destination dir "%s" not found' % pu_dst_dir)
 
-    u_dst_fmt = u_dst_fmt.lower()
-    u_src_fmt = u_src_fmt.lower()
+    if pu_dst_fmt not in do_valid_single_modes.keys():
+        raise Exception('Unknown destination format "%s"' % pu_dst_fmt)
 
-    if u_dst_fmt not in du_FORMATS.keys():
-        raise Exception('Unknown destination format "%s"' % u_dst_fmt)
+    if pu_src_fmt not in do_valid_single_modes.keys():
+        raise Exception('Unknown source format "%s"' % pu_src_fmt)
 
-    if u_src_fmt not in du_FORMATS.keys():
-        raise Exception('Unknown source format "%s"' % u_src_fmt)
-
-    # Loading of the dat file
-    o_dat = romdats.GameContainer(u_dat)
+    # Mode alias to search field relationship
+    du_mode_to_field = {''}
 
     # Getting the list of files to process
     lo_files_to_process = []
 
-    o_src_path = libs.files.FilePath(u_src_path)
-    o_dst_dir = libs.files.FilePath(u_dst_dir)
+    o_src_path = files.FilePath(pu_src_path)
+    o_dst_dir = files.FilePath(pu_dst_dir)
 
     if o_src_path.is_file():
         lo_files_to_process.append(o_src_path)
     elif o_src_path.is_dir():
-        for o_src_file_object in o_src_path.content():
-            if o_src_file_object.is_file():
-                lo_files_to_process.append(o_src_file_object)
+        for o_src_fp in o_src_path.content():
+            if o_src_fp.is_file():
+                lo_files_to_process.append(o_src_fp)
 
     # Stats initialization
     i_files_total = len(lo_files_to_process)
@@ -291,72 +290,72 @@ def hq_copy(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b
     lu_unk_files = []
 
     # Processing of the files
-    for o_src_file_object in lo_files_to_process:
+    i_file = 0
+    for o_src_fp in lo_files_to_process:
+        i_file += 1
 
         # If the regex mode is not active, the full name of the file is used to find a game in the database. But with
         # regex matching, just part of the filename is used.
         if None in (u_regex_pattern, i_regex_group):
-            u_caught_name = o_src_file_object.u_name
+            u_caught_name = o_src_fp.u_name
         else:
-            u_caught_name = _regex_catcher(o_src_file_object.u_name, u_regex_pattern, i_regex_group)
+            u_caught_name = _regex_catcher(o_src_fp.u_name, u_regex_pattern, i_regex_group)
 
-        o_game = o_dat.get_game_by_field(du_FORMATS[u_src_fmt], u_caught_name, b_clean_hash)
+        try:
+            o_romset = po_dat.get_romsets_by_field(do_valid_single_modes[pu_src_fmt].u_field, True, u_caught_name)[0]
+        except IndexError:
+            o_romset = None
 
-        if o_game:
+        if o_romset:
             i_files_recognized += 1
-            lu_ren_files.append(o_src_file_object.u_file)
+            lu_ren_files.append(o_src_fp.u_file)
 
-            if u_dst_fmt in ('c', 'm', 's'):
-                du_hashes = o_game._get_hash(pb_clean=b_clean_hash)
-                u_output_name = du_hashes[du_FORMATS[u_dst_fmt]]
-            else:
-                u_output_name = o_game.u_description
+            u_output_name = getattr(o_romset, do_valid_single_modes[pu_dst_fmt].u_field)
 
-            o_dst_file_object = libs.files.FilePath(o_dst_dir.u_path, '%s.%s' % (u_output_name,
-                                                                                 o_src_file_object.u_ext))
+            o_dst_file_object = files.FilePath(o_dst_dir.u_path, u'%s.%s' % (u_output_name, o_src_fp.u_ext))
             u_dst_file_name = o_dst_file_object.u_file
 
-            if b_sim:
-                u_copy_text = 's'
+            if pb_sim:
+                u_copy_text = u's'
             else:
-                shutil.copy(o_src_file_object.u_path, o_dst_file_object.u_path)
-                u_copy_text = libs.cons.u_OK_TEXT
+                i_files_renamed += 1
+                shutil.copy(o_src_fp.u_path, o_dst_file_object.u_path)
+
+                # TODO: Fix this nasty hack since doesn't show any success/fail result for delete.
+                if pb_del_src:
+                    os.remove(o_src_fp.u_path)
+
+                u_copy_text = cons.u_OK_TEXT
 
         else:
-            lu_unk_files.append(o_src_file_object.u_file)
-            u_dst_file_name = '-- UNKNOWN --'
-            u_copy_text = libs.cons.u_ER_TEXT
+            lu_unk_files.append(o_src_fp.u_file)
+            u_dst_file_name = u'-- UNKNOWN --'
+            u_copy_text = cons.u_ER_TEXT
 
-        # Add extra indication of clean or dirty hash
-        u_extra_src = ''
-        u_extra_dst = ''
+        if pi_print_mode > 0:
+            u_output = u'%s [%i/%i] %s: %s  ->  %s: %s' % (u_copy_text,
+                                                           i_file,
+                                                           len(lo_files_to_process),
+                                                           pu_src_fmt, o_src_fp.u_file,
+                                                           pu_dst_fmt, u_dst_file_name)
+            if pi_print_mode == 1:
+                sys.stdout.write(u'\r%s' % u_output.ljust(cons.i_TERM_COLS)[0:cons.i_TERM_COLS])
+                sys.stdout.flush()
 
-        if u_src_fmt in ('c', 'm', 's'):
-            if b_clean_hash:
-                u_extra_src = 'C '
+            elif pi_print_mode == 2:
+                print u_output.encode('utf8')
+
             else:
-                u_extra_src = 'D '
+                raise ValueError
 
-        if u_dst_fmt in ('c', 'm', 's'):
-            if b_clean_hash:
-                u_extra_dst = 'C '
-            else:
-                u_extra_dst = 'D '
-
-        if b_print:
-            print '%s %s%s: %s -> %s%s: %s' % (u_copy_text,
-                                               u_extra_src,
-                                               du_FORMATS[u_src_fmt],
-                                               o_src_file_object.u_file,
-                                               u_extra_dst,
-                                               du_FORMATS[u_dst_fmt],
-                                               u_dst_file_name)
-
-    if b_print:
+    if pi_print_mode == 1:
+        # Cleaning the last line and returning the cursor to the beginning
+        sys.stdout.write(u'\r%s\r' % u''.ljust(cons.i_TERM_COLS))
+    elif pi_print_mode == 2:
         # This is just an empty line at the end of the converted files
         print
 
-    o_end = libs.time.now()
+    o_end = time.now()
 
     return {'i_total_files': i_files_total,
             'i_recog_files': i_files_recognized,
@@ -370,17 +369,16 @@ def hq_copy(u_dat='', u_src_path='', u_dst_dir='', u_src_fmt='', u_dst_fmt='', b
 # EXECUTION AS COMMAND LINE PROGRAM
 #=======================================================================================================================
 if __name__ == '__main__':
-    print libs.strings.hq_title(u_PROG_NAME, u_PROG_VER)
+    print strings.hq_title(u_PROG_NAME, u_PROG_VER)
 
     dx_args = _get_cmd_options()
-    dx_rename_output = hq_copy(u_dat=dx_args['u_dat_file'],
-                               u_src_path=dx_args['u_src_path'], u_dst_dir=dx_args['u_dst_path'],
-                               u_src_fmt=dx_args['u_src_format'], u_dst_fmt=dx_args['u_dst_format'],
-                               b_clean_hash=dx_args['b_clean_hash'],
-                               b_sim=dx_args['b_simulation'],
+    dx_rename_output = hq_copy(po_dat=dx_args['u_dat_file'],
+                               pu_src_path=dx_args['u_src_path'], pu_dst_dir=dx_args['u_dst_path'],
+                               pu_src_fmt=dx_args['u_src_format'], pu_dst_fmt=dx_args['u_dst_format'],
+                               pb_sim=dx_args['b_simulation'],
                                u_regex_pattern=dx_args['u_regex_pattern'],
                                i_regex_group=dx_args['i_regex_group'],
-                               b_print=True)
+                               i_print_mode=2)
 
     # Some basic stats are printed to screen
     f_renamed_percent = 100.0 * dx_rename_output['i_recog_files'] / dx_rename_output['i_total_files']

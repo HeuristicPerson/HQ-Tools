@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import codecs
-import datetime
 import xml.etree.cElementTree
 import os                       # OS utils
 import re
@@ -13,7 +12,7 @@ import csv
 # Constants
 #=======================================================================================================================
 _u_VERSION = u'2015-04-18'                                          # Version of the library
-_tu_GAME_SEARCH_FIELDS = (u'crc32', u'description', u'md5', u'name', u'sha1')    # Valid fields to get games by
+lu_IGNORE_EXTS = [u'cue']
 #-----------------------------------------------------------------------------------------------------------------------
 
 
@@ -43,20 +42,31 @@ class Filter:
         return u_output.encode('utf8', 'strict')
 
 
+class Field:
+    """
+    Class to store configuration data for CSV import method for RomSetContainer.
+    """
+    def __init__(self, pi_src_column, ps_dst_field):
+        self.i_src_column = pi_src_column
+        self.s_dst_field = ps_dst_field
+
+
 class RomSetContainer:
     """
     Class to store a list of games, each game can contain different ROM files data. The information can be read/write to
     disk ROM file objects.
     """
 
-    def __init__(self, u_file=u'', u_log=''):
+    def __init__(self, u_file=None):
 
         # TODO: RomSetContainer should contain an internal registry with all the manipulations suffered by the object so
-        #       when you export the file to disk you know the information is not comming directly from the RAW dat file.
+        #       when you export the file to disk you know the information is not coming directly from the RAW dat file.
+
+        # I think that some "MODIFIED" flags would be enough like .db_flags{'added_sets': True, 'removed_sets': True...}
 
         # Variable definition
         self.i_games = 0          # number of games stored
-        self.i_position = None    # RomSet position for the iterator
+        self.i_position = None    # _RomSet position for the iterator
 
         self.u_name = u''         # internal name of the dat file.
         self.u_description = u''  # description of the dat file.
@@ -67,14 +77,24 @@ class RomSetContainer:
 
         self.lo_games = []        # list of game objects inside the dat file
 
-        self._lu_log = []          # Internal log
+        self._db_flags = {'from_dat': False,
+                          'sets_added': False,
+                          'sets_deleted': False,
+                          'data_imported': False}       # Modification flags
 
-        if u_file != u'':
+        self._tu_valid_search_fields = ('i_year',
+                                        'u_ccrc32', 'u_dcrc32',
+                                        'u_cmd5', 'u_dmd5',
+                                        'u_csha1', 'u_dsha1',
+                                        'u_desc', 'u_name', 'u_auth')
+
+        if u_file:
             self.read_from_dat(u_file)
 
     def __str__(self):
         u_output = u''
-        u_output += u'<RomSet container>\n'
+        u_output += u'<RomSetContainer>\n'
+        u_output += u'  ._db_flags: %s\n' % str(self._db_flags)
         u_output += u'  .u_name:    %s\n' % self.u_name
         u_output += u'  .u_desc:    %s\n' % self.u_description
         u_output += u'  .u_version: %s\n' % self.u_version
@@ -104,29 +124,29 @@ class RomSetContainer:
         else:
             raise StopIteration()
 
-    def _add_game(self, o_game):
+    def _add_romset(self, o_romset):
         """
         Internal method to add games to the container WITHOUT any kind of duplicity or other kind of check.
 
-        :param o_game:
+        :param o_romset:
         """
 
-        self.lo_games.append(o_game)
+        self.lo_games.append(o_romset)
         self.i_games += 1
 
-    def add_game(self, o_game):
+    def add_romset(self, o_romset):
         """
-        Method to add a new game to the container.
+        Method to add a new romset game to the container.
 
-        :param o_game: RomSet to add.
+        :param o_romset: _RomSet to add.
 
         :return: True if the game was successfully added, false in other case.
         """
 
         b_added = False
 
-        if (o_game is not None) and (not self.id_exists(o_game.u_id)):
-            self._add_game(o_game)
+        if (o_romset is not None) and (not self.id_exists(o_romset.u_id)):
+            self._add_romset(o_romset)
             b_added = True
 
         return b_added
@@ -138,20 +158,46 @@ class RomSetContainer:
         :return: True if duplicates were found, False in other case.
         """
 
-        lu_ids = []
+        lu_md5s = []
 
-        for o_game in self.lo_games:
-            lu_ids.append(o_game.u_id)
+        for o_romset in self.lo_games:
+            lu_md5s.append(o_romset.u_dmd5)
 
-        su_unique_ids = set(lu_ids)
+        su_unique_md5s = set(lu_md5s)
 
-        # Since I want to be sure that I found the errors, by default I assume there are duplicated Ids.
+        # Since I want to be sure that I found the errors, by default I assume there are duplicated MD5s.
         b_duplicates = True
 
-        if len(lu_ids) == len(su_unique_ids):
+        if len(lu_md5s) == len(su_unique_md5s):
             b_duplicates = False
 
         return b_duplicates
+
+    def _show_duplicates(self):
+        """
+        Method to quick show duplicates so you can fix the problems using other tools or manually.
+
+        WARNING! This method can be really slow.
+
+        :return: A list of lists.
+        """
+
+        dlu_duplicated_romsets = {}
+
+        for o_romset in self:
+            if o_romset.u_dmd5 not in dlu_duplicated_romsets:
+                dlu_duplicated_romsets[o_romset.u_dmd5] = []
+
+            dlu_duplicated_romsets[o_romset.u_dmd5].append(o_romset.u_name)
+
+        # Since for an A-B duplicate we check the duplicity two times A vs B, B vs A, the lists of duplicates are
+        # doubled and have to be made unique.
+        dlu_clean_duplicated_romsets = {}
+        for u_key, lu_values in dlu_duplicated_romsets.iteritems():
+            if len(lu_values) > 1:
+                dlu_clean_duplicated_romsets[u_key] = set(lu_values)
+
+        return dlu_clean_duplicated_romsets
 
     def empty(self):
         """
@@ -188,13 +234,11 @@ class RomSetContainer:
         u_log_message += u'u_type="%s" ' % self.u_type
         u_log_message += u'u_author="%s" ' % self.u_author
 
-        self._log(u_log_message)
-
     def csv_export(self, ptu_fields=(), ptu_headings=()):
         """
         Method to export the RomSetContainer data to a csv file.
 
-        :param ptu_fields: Tuple of the fields to export, i.e. ('u_crc32', 'u_name', 'i_year'')
+        :param ptu_fields: Tuple of the fields to export, i.e. ('_u_crc32', 'u_name', 'i_year'')
 
         :param ptu_headings: Tuple with the headings for each field. If the tuple is emtpy, the raw field names will be
                              used. i.e. ('CRC32', 'Game Name', 'Year')
@@ -213,6 +257,14 @@ class RomSetContainer:
         o_csv.lu_comments.append(u'       Type: %s' % self.u_type)
         o_csv.lu_comments.append(u'      Games: %i' % self.i_games)
 
+        lu_flags = []
+        for u_key, b_value in self._db_flags.iteritems():
+            lu_flags.append(u'%s=%s' % (u_key, b_value))
+        lu_flags.sort()
+        u_flags = u' '.join(lu_flags)
+
+        o_csv.lu_comments.append(u'      Flags: %s' % u_flags)
+
         # Headings
         if ptu_headings:
             o_csv.lu_headings = ptu_headings
@@ -230,6 +282,47 @@ class RomSetContainer:
 
         return o_csv
 
+    def csv_import(self, po_csv=None, po_id_field=None, plo_fields=None, pb_overwrite=False):
+        """
+        Method to import data from a csv object.
+
+        :param po_csv: Csv object from csv library.
+        :param po_id_field: Field object indicating the csv column to use as identification field and the name of that
+                            field. WARNING: Using a non-unique field as identification field can lead to import data to
+                            the wrong SETs.
+        :param plo_fields: List of Field objects indicating which columns to import.
+        :param pb_overwrite: If True, imported data will overwrite the previous existing data. If False, previous data
+                             will be kept.
+        :return: Nothing.
+        """
+
+        if po_id_field and plo_fields:
+            self._db_flags['data_imported'] = True
+
+            for lu_row in po_csv.llu_rows:
+                u_csv_id = lu_row[po_id_field.i_src_column]
+                for o_romset in self:
+                    if getattr(o_romset, po_id_field.s_dst_field) == u_csv_id:
+                        for o_update_field in plo_fields:
+                            if o_update_field.s_dst_field == 'i_year':
+                                if pb_overwrite or o_romset.i_year == 0:
+                                    o_romset.i_year = int(lu_row[o_update_field.i_src_column])
+
+                            elif o_update_field.s_dst_field == 'u_desc':
+                                # Description field always has content so no need to check for "empty".
+                                if pb_overwrite:
+                                    o_romset.u_desc = lu_row[o_update_field.i_src_column]
+
+                            elif o_update_field.s_dst_field == 'u_auth':
+                                if pb_overwrite or o_romset.u_mfr == u'':
+                                    o_romset.u_mfr = lu_row[o_update_field.i_src_column]
+
+                            # TODO: Add new fields to romset like genre, number of players, etc... that can be imported
+                            else:
+                                raise ValueError('Invalid value to update "%s"' % o_update_field.s_dst_field)
+                        # Id field should be unique, so we stop searching for other romsets after the first match
+                        break
+
     def filter(self, o_filter):
         """
         Method to filter in/out games depending on a field name and allowed/disallowed values for that field.
@@ -244,44 +337,33 @@ class RomSetContainer:
         :return: A list of games that match or don't match your filter criteria.
         """
 
-        u_log_in_start = u'Filter IN:'
-        u_log_out_start = u'Filter OUT:'
-
-        u_log_message = u''
-        u_log_message += u'Attribute="%s" ' % o_filter.u_attribute
-        u_log_message += u'Method="%s" ' % o_filter.u_method
-        u_log_message += u'Value(s)="%s"' % str(o_filter.lx_values)
-
         # Two RomSetContainer objects are created to store the games that matched the filter and the games that didn't
         # matched it.
         o_matched_container = RomSetContainer()
         o_matched_container.copy_metadata_from(self)
         o_matched_container.modify_metadata(u'FILTER(', u')')
-        o_matched_container._log(u'%s %s' % (u_log_in_start, u_log_message))
-
         o_unmatched_container = RomSetContainer()
         o_unmatched_container.copy_metadata_from(self)
-        o_unmatched_container._log(u'%s %s' % (u_log_out_start, u_log_message))
 
         for o_game in self:
 
             # The first thing to do is (to try) to obtain o_game.<u_attribute>
             try:
-                 x_value = getattr(o_game, o_filter.u_attribute)
+                x_value = getattr(o_game, o_filter.u_attribute)
 
             except AttributeError:
                 raise Exception('ERROR: You are trying to access the unknown attribute "%s"' % o_filter.u_attribute)
 
             # Then we can filter. Since we are filtering already unique games present in our container, we don't need
             # to perform any uniqueness test while adding the games to the matched/unmatched containers. So, we use the
-            # method _add_game which doesn't perform that test and is much faster than the equivalent one with test
-            # add_game.
+            # method _add_romset which doesn't perform that test and is much faster than the equivalent one with test
+            # add_romset.
             if o_filter.u_method == 'equals':
                 if x_value in o_filter.lx_values:
-                    o_matched_container._add_game(o_game)
+                    o_matched_container._add_romset(o_game)
 
                 else:
-                    o_unmatched_container._add_game(o_game)
+                    o_unmatched_container._add_romset(o_game)
 
         return o_matched_container, o_unmatched_container
 
@@ -300,6 +382,7 @@ class RomSetContainer:
 
         return b_exists
 
+    # TODO: Probably this method can be deleted. It's also quite nasty since doesn't allow you to modify just one field.
     def modify_metadata(self, u_start=u'', u_end=u''):
         """
         Method to modify metadata information adding extra information at the beginning and end of each field.
@@ -322,7 +405,7 @@ class RomSetContainer:
         """
         Method to set the id field for each game as one between the different options given.
 
-        :param s_mode: Which mode should be used to assign the games an id. Valid modes are defined in RomSet object.
+        :param s_mode: Which mode should be used to assign the games an id. Valid modes are defined in _RomSet object.
 
         :return Nothing.
         """
@@ -330,220 +413,30 @@ class RomSetContainer:
         for o_game in self.lo_games:
             o_game.set_id(s_mode)
 
-    def get_by_id(self, u_id):
+    def get_romsets_by_field(self, pu_field, pb_first, *px_search_values):
         """
-        Method that returns the game object corresponding to certain id.
+        Method to get a list of MULTIPLE GAMES with certain content in a field.
 
-        :param u_id: Identification of the game it's going to be returned. i.e. '12345678'.
+        :param pu_field: Name of the field. i.e. 'i_year'
 
-        :return A game object
-        """
+        :param px_search_values: Content of the field to search for. i.e. 1985, 1986
 
-        # TODO: Avoid the usage of filter.
-        # I think the performance of this function through filters is much slower than actually checking the games one
-        # by one. On the other hand, using filters I can: a) obtain multiple results which actually is a way to check
-        # for duplicates present in the DB. But I'm not sure if that's a good idea.
-
-        o_filter = Filter('u_id', 'equals', u_id)
-        o_games_matched, o_games_not_matched = self.filter(o_filter)
-
-        # If no games matched, None is output
-        if len(o_games_matched) == 0:
-            o_found_game = None
-
-        # If one game was found, it's output
-        elif len(o_games_matched) == 1:
-
-            # I don't like this cheesy way to obtain the first (and only) element matched, but it works
-            for o_game_matched in o_games_matched:
-                o_found_game = o_game_matched
-                break
-        else:
-            raise Exception('ERROR: Filter returns more than one result for one id')
-
-        return o_found_game
-
-    def get_by_ids(self, lu_ids):
-        """
-        Method to obtain a container of games from a list of Ids. If an output file is specified, the obtained results
-        are sorted alphabetically and written to that file including information about the DB that was used to try to
-        match the Ids.
-
-        :param lu_ids: List containing the Ids to search. i.e. ['12345678', 'aaaaaaaa', 'a0b1c2d3e4']
-
-        :return: A game container (sub-container if you wish), containing just the games found with the required IDs.
+        :return: A list with the found romsets.
         """
 
-        o_filter = Filter('u_id', 'equals', *lu_ids)
-        o_games_in, o_games_out = self.filter(o_filter)
+        lo_romsets = []
 
-        return o_games_in
-
-    def _get_by_description(self, u_description):
-        """
-        Method that returns the game object corresponding to certain name.
-
-        :param u_description: Name of the game that is going to be returned. i.e. 'Super Mario World (USA)'
-
-        :return: A game object
-        """
-
-        # TODO: Avoid the usage of filter.
-        # I think the performance of this function through filters is much slower than actually checking the games one
-        # by one. On the other hand, using filters I can: a) obtain multiple results which actually is a way to check
-        # for duplicates present in the DB. But I'm not sure if that's a good idea.
-
-        o_filter = Filter('u_desc', 'equals', u_description)
-        o_games_matched, o_games_not_matched = self.filter(o_filter)
-
-        # If no games are present in the "found games container
-        if o_games_matched.i_games == 0:
-            o_found_game = None
-
-        elif o_games_matched.i_games == 1:
-
-            # I don't like this method of obtaining the first game of the container, but it's simple and it works
-            for o_game_matched in o_games_matched:
-                o_found_game = o_game_matched
-                break
+        if pu_field not in self._tu_valid_search_fields:
+            raise ValueError('Error: pu_field must be one of %s' % str(self._tu_valid_search_fields))
 
         else:
-            raise Exception('ERROR: Filter returns more than one result for one description')
+            for o_romset in self:
+                if getattr(o_romset, pu_field) in px_search_values:
+                    lo_romsets.append(o_romset)
+                    if pb_first:
+                        break
 
-        return o_found_game
-
-    def get_by_descriptions(self, *pu_descriptions):
-        """
-        Method to obtain a sub-RomSetContainer from a list of rom names.
-
-        For most console material, the rom name and the game description is the same. But in MAME, the ROM name is 8
-        character while the game description is the full game name.
-
-        #TODO: get_by_ids method should be analogue to this one.
-
-        :param pu_descriptions: Descriptions to search for i.e. u'Super Mario World (USA)', u'Yoshi's Island (JAP)'
-
-        :return: A game container with the found games and a list with the not found games descriptions.
-        """
-
-        # We create an empty container for the found games, and a plain list for games not present in DB
-        lu_games_not_found = []
-        o_games_found = RomSetContainer()
-        o_games_found.copy_metadata_from(self)
-
-        for u_description in pu_descriptions:
-            o_game = self._get_by_description(u_description)
-            if o_game:
-                o_games_found.add_game(o_game)
-            else:
-                lu_games_not_found.append(u_description)
-
-        return o_games_found, lu_games_not_found
-
-    def get_game_by_field(self, u_field=None, u_search_string=None, b_discard_irrelevant=False):
-        """
-        Quick method to obtain the first game that matches the required valued in the required field.
-
-        :param u_field: Name of the field of the game to search in. i.e. 'i_crc32'
-        :param u_search_string: String that needs to match. i.e. '12345678'
-        :param b_discard_irrelevant: When searching by hashes, do you want to discard irrelevant files? (i.e. .cue)
-        :return:
-        """
-        # Parameters validation
-        if u_field not in _tu_GAME_SEARCH_FIELDS:
-            raise Exception('ERROR: Unknown field "%s". Valid options are "%s"' % (u_field, str(_tu_GAME_SEARCH_FIELDS)))
-
-        # Initialization
-        o_first_game = None
-
-        if u_search_string:
-            for o_game in self:
-                b_game_matched = False
-
-                # Hash searches are case insensitive
-                if u_field in (u'crc32', u'md5', u'sha1'):
-                    du_hashes = o_game._get_hash(pb_clean=b_discard_irrelevant)
-                    u_hash = du_hashes[u_field]
-                    if u_hash.lower() == u_search_string.lower():
-                        b_game_matched = True
-
-                # While name and description searches are case sensitive
-                else:
-                    if u_field == u'description' and o_game.u_description == u_search_string:
-                        b_game_matched = True
-                    elif u_field == u'name' and o_game.u_name == u_search_string:
-                        b_game_matched = True
-
-                if b_game_matched:
-                    o_first_game = o_game
-                    break
-
-        return o_first_game
-
-    def old_import_extra_data_from_csv(self, u_file):
-        """
-        Method to import EXTRA DATA (JUST EXTRA META-DATA), like year, manufacturer, genre... from a csv file IN MY OWN
-        AND SPECIFIC FORMAT. Only csv files previously written with this library should be loaded
-
-        :param u_file: CSV file name to import. i.e. '/home/john/my-megadrive-games.csv'
-
-        :return: Nothing
-        """
-
-        o_file = codecs.open(u_file, 'rb', 'utf8', 'ignore')
-
-        # First line is csv generator comment, second line is empty
-        o_file.readline()
-        o_file.readline()
-
-        self.u_name = o_file.readline().partition(':')[2].strip()
-        self.u_description = o_file.readline().partition(':')[2].strip()
-        self.u_version = o_file.readline().partition(':')[2].strip()
-        self.u_comment = o_file.readline().partition(':')[2].strip()
-        self.u_author = o_file.readline().partition(':')[2].strip()
-
-        # One extra empty line and another one with column names
-        o_file.readline()
-        o_file.readline()
-
-        # Real data
-        for u_line in o_file:
-
-            lu_elements = u_line.split(u'\t')
-            lu_clean_elements = []
-            for u_element in lu_elements:
-                u_clean_element = u_element.strip()
-                u_clean_element = u_clean_element.strip('"')
-                u_clean_element = u_clean_element.strip()
-                lu_clean_elements.append(u_clean_element)
-
-            # TODO: Check which fields could be interesting to store and add them to this parser
-            u_id = lu_clean_elements[0]
-
-            # The id is not needed, it's just present in the csv to help people to manually update its information.
-            #u_desc = lu_clean_elements[1]
-
-            i_year = int(lu_clean_elements[2])
-            u_manufacturer = lu_clean_elements[3]
-
-            # We get the right game from the database using the id stored in the CSV file.
-            o_game = self.get_by_id(u_id)
-
-            # Then, we simply need to update its information with the one coming from the CSV file
-            if o_game is not None:
-                if i_year != 0:
-                    o_game.i_year = i_year
-
-                if u_manufacturer != u'':
-                    o_game.u_manufacturer = u_manufacturer
-
-            # If the game wasn't found, we add the line to an error report
-            else:
-                # TODO: Add the "game not found" report code.
-                pass
-
-        # Including the operation into the internal log
-        self._log('Meta-Data imported from CSV file "%s"' % u_file)
+        return lo_romsets
 
     def read_from_dat(self, pu_file):
         """
@@ -572,41 +465,26 @@ class RomSetContainer:
         elif u_first_line.find(u'<?xml') != -1:
             u_format = 'xml'
 
+        # Unknown format error raise
+        else:
+            raise IOError('Unknown DAT format')
+
         # Loading the file using the different readers depending on the format parameter
         if u_format == 'cmp':
             self._read_from_cmp(pu_file)
         elif u_format == 'xml':
             self._read_from_xml(pu_file)
-        else:
-            raise Exception('Unknown dat format "%s"' % u_format)
 
         # After loading the games from disk, the list is sorted
         self._sort()
 
-        # I think it makes sense to make the games get an id using an automatic method when loading the dat. Then,
-        # later, the user could have change that method calling by himself --externally-- the get_id method.
-
-        # Redump DBs --> sum_crc32
-        if self.u_author == u'redump.org':
-            self.set_id('sum_crc32')
-
-        # No-intro DBs --> sum_crc32
-        elif self.u_comment.find(u'no-intro') != -1:
-            self.set_id('sum_crc32')
-
-        # MAME DB --> short_name
-        elif self.u_name == u'mame':
-            self.set_id('short_name')
-
-        else:
-            s_output = 'Unknown dat format, not "redump.org", not "no-intro", not "mane"'
-            raise Exception(s_output)
-
-        self._log(u'Read from "%s" file "%s"' % (u_format, pu_file))
+        # We alter the proper flag
+        self._db_flags['from_dat'] = True
 
         # Now that the game container has been populated from disk, is the time to check that we don't have duplicated
         # Ids
         if self._duplicates_found():
+            print self._show_duplicates()
             raise Exception('Duplicated Id\'s found')
 
     def _read_from_cmp(self, u_file):
@@ -648,28 +526,26 @@ class RomSetContainer:
                 ls_head_strings.append(u_line)
                 continue
 
-            # RomSet data
+            # _RomSet data
             if u_line.find('game (') == 0:
                 b_game_mode = True
                 continue
 
             if b_game_mode and u_line.find(')') == 0:
-                u_game_name = _dat_vertical_parse(lu_game_strings, 'name')
-                u_game_description = _dat_vertical_parse(lu_game_strings, 'description')
-                u_game_manufacturer = _dat_vertical_parse(lu_game_strings, 'manufacturer')
+                u_romset_name = _dat_vertical_parse(lu_game_strings, 'name')
+                u_romset_description = _dat_vertical_parse(lu_game_strings, 'description')
+                u_romset_author = _dat_vertical_parse(lu_game_strings, 'manufacturer')
                 u_game_year = _dat_vertical_parse(lu_game_strings, 'year')
                 if u_game_year == u'':
                     u_game_year = u'0'
 
                 lu_game_roms = _dat_vertical_parse(lu_game_strings, 'rom', 'multi')
 
-                o_dat_game = RomSet(u_game_name, u_game_description)
-                o_dat_game.i_year = int(u_game_year)
-                o_dat_game.s_manufacturer = u_game_manufacturer
+                o_dat_romset = _RomSet(u_romset_name, u_romset_description)
+                o_dat_romset.i_year = int(u_game_year)
+                o_dat_romset.u_auth = u_romset_author
 
                 for s_game_rom in lu_game_roms:
-                    o_dat_game.i_roms += 1
-
                     # sometimes name has quotes " around and sometimes not, so it's safer to use size as end.
                     u_rom_name = _dat_horizontal_parse(s_game_rom, 'name ', 'size')
 
@@ -687,16 +563,16 @@ class RomSetContainer:
                     o_rom.u_sha1 = u_rom_sha1.lower()
 
                     # add the rom object to the list
-                    o_dat_game.lo_roms.append(o_rom)
+                    o_dat_romset.lo_roms.append(o_rom)
 
                 # We add the game to the container without any kind of check, we will do it later.
-                self._add_game(o_dat_game)
+                self._add_romset(o_dat_romset)
 
                 lu_game_strings = []
                 b_game_mode = False
                 continue
 
-            # RomSet mode actions
+            # _RomSet mode actions
             if b_game_mode:
                 lu_game_strings.append(u_line)
                 pass
@@ -714,12 +590,12 @@ class RomSetContainer:
         self.u_version = o_header.find('version').text
         self.u_author = o_header.find('author').text
 
-        # RomSet information
+        # _RomSet information
         for o_game_elem in o_xml_root.findall('game'):
             u_game_name = o_game_elem.attrib['name']
             u_game_description = u_game_name
 
-            o_dat_game = RomSet(u_game_name, u_game_description)
+            o_dat_game = _RomSet(u_game_name, u_game_description)
 
             for o_rom_elem in o_game_elem.findall('rom'):
                 # create a rom object
@@ -734,68 +610,52 @@ class RomSetContainer:
                 o_dat_game.lo_roms.append(o_rom)
 
             # We add the game to the container without any kind of check, we will do it later.
-            self._add_game(o_dat_game)
-
-    def _log(self, u_message):
-        """
-        Method to internally log information about the manipulations suffered by the RomSetContainer
-        :param u_message:
-        :return:
-        """
-
-        o_timestamp = datetime.datetime.now()
-        u_new_line = u'%s\t%s' % (o_timestamp.strftime(u'%d-%m-%Y %H:%M:%S.%f'), u_message)
-
-        self._lu_log.append(u_new_line)
+            self._add_romset(o_dat_game)
 
     def _sort(self):
         # Sorting of the list based on the game description (which is more reliable than the short name of the game)
         self.lo_games.sort(key=lambda o_game: o_game.u_desc.encode('utf8', 'strict'), reverse=False)
 
 
-class RomSet(object):
+class _RomSet(object):
 
-    _i_id = 0
+    def __init__(self, pu_name, pu_description):
 
-    def __init__(self, u_name, u_description):
+        # Properties: Basic ones
+        self.u_name = pu_name        # Usually, the file name for the game. MAME uses a short 8 char or less name here.
+        self.u_desc = pu_description # Usually, the full and long name of the game i.e. 'Super Mario World (Europe)'.
 
-        RomSet._i_id += 1
-
-        # Variable definition
-        self._i_id = RomSet._i_id  # Position number. It will be 0, 1, 2, 3... for the consecutive games in the dat.
-        self.i_roms = 0              # Number of ROMs that make the full game.
+        # Properties: The rest
         self.i_year = 0              # Year the game was published in (MAME dat support only, AFAIK).
         self.lo_roms = []            # List containing all the ROM information objects.
-        self.u_desc = u''            # Usually, the full and long name of the game i.e. 'Super Mario World (Europe)'.
-        self.u_id = u''              # Unique id string of the game used to identify the game.
-        self.u_mfr = u''             # Manufacturer, company that programmed the game (MAME dat support only, AFAIK).
-        self.u_name = u''            # Usually, the file name for the game. MAME uses a short 8 char or less name here.
+        self.u_auth = u''            # Author, company that programmed the game (MAME dat support only, AFAIK).
 
-        # Unused properties by now
-        self.lu_languages = []    # List of iso codes (3 letters) for languages included
-        self.lu_countries = []    # List of iso codes (3 letters) for countries where the game was published
-
-        # Variable population (just the very basic information is needed).
-        self.u_name = u_name
-        self.u_desc = u_description
+        # Properties: Unused ones, by now...
+        self._lu_languages = []      # List of iso codes (3 letters) for languages included
+        self._lu_countries = []      # List of iso codes (3 letters) for countries where the game was published
+        self._lu_genres = []         # List of genres
 
     def __str__(self):
         u_output = u''
-        u_output += u'[RomSet]\n'
-        u_output += u'  u_name: %s\n' % self.u_name
-        u_output += u'  u_desc: %s\n' % self.u_desc
-        u_output += u'  i_year: %i\n' % self.i_year
-        u_output += u'   u_mfr: %s\n' % self.u_mfr
-        u_output += u'    u_id: %s\n' % self.u_id
-        u_output += u'  i_roms: %i\n' % self.i_roms
-        u_output += u' lo_roms:\n'
+        u_output += u'[_RomSet]\n'
+        u_output += u'  .u_ccrc32: %s\n' % self.u_ccrc32
+        u_output += u'  .u_cmd5:   %s\n' % self.u_cmd5
+        u_output += u'  .u_csha1:  %s\n' % self.u_csha1
+        u_output += u'  .i_csize:  %s\n' % self.i_csize
+        u_output += u'  .u_dcrc32: %s\n' % self.u_dcrc32
+        u_output += u'  .u_desc:   %s\n' % self.u_desc
+        u_output += u'  .u_dmd5:   %s\n' % self.u_dmd5
+        u_output += u'  .u_dsha1:  %s\n' % self.u_dsha1
+        u_output += u'  .u_dsize:  %s\n' % self.i_dsize
+        u_output += u'  .u_auth:   %s\n' % self.u_auth
+        u_output += u'  .u_name:   %s\n' % self.u_name
+        u_output += u'  .i_year:   %i\n' % self.i_year
+        u_output += u'  .lo_roms:\n'
 
         i_roms = 0
 
         for o_rom in self.lo_roms:
             i_roms += 1
-            i_line = 0
-
             u_rom_text = str(o_rom).decode('utf8')
 
             # Modification of u_rom_text to show the rom number
@@ -805,13 +665,7 @@ class RomSet(object):
             lu_rom_clean_lines = []
 
             for u_line in lu_rom_raw_lines:
-                i_line += 1
-
-                if i_line == 1:
-                    u_extra_spaces = u' ' * 10
-                else:
-                    u_extra_spaces = u' ' * 10
-
+                u_extra_spaces = u' ' * 13
                 lu_rom_clean_lines.append('%s%s' % (u_extra_spaces, u_line))
 
             u_output += u'%s\n\n' % (u'\n'.join(lu_rom_clean_lines))
@@ -823,7 +677,7 @@ class RomSet(object):
         Method to obtain the COMPOUND hash of the game. It means the hash of *all* the ROMs included in the game will be
         summed. For example, if the game contains two ROMs:
 
-            - RomSet A
+            - _RomSet A
                 - ROM a1: CRC32 = 01020304
                 - ROM a2: CRC32 = 0a0b0c0d
 
@@ -868,18 +722,28 @@ class RomSet(object):
                 if u'.' in o_rom.u_name:
                     u_ext = o_rom.u_name.rpartition('.')[2].lower()
 
-                    if u_ext not in ['cue']:
+                    # TODO: Move ignored extensions to a more global constant
+                    if u_ext not in lu_IGNORE_EXTS:
                         lo_relevant_roms.append(o_rom)
 
         for o_rom in lo_relevant_roms:
 
             # Rom hash addition
             if pu_type == 'crc32':
-                i_base10_value += int(o_rom.u_crc32, 16)
+                try:
+                    i_base10_value += int(o_rom.u_crc32, 16)
+                except ValueError:
+                    i_base10_value += 0
             elif pu_type == 'md5':
-                i_base10_value += int(o_rom.u_md5, 16)
+                try:
+                    i_base10_value += int(o_rom.u_md5, 16)
+                except ValueError:
+                    i_base10_value += 0
             elif pu_type == 'sha1':
-                i_base10_value += int(o_rom.u_sha1, 16)
+                try:
+                    i_base10_value += int(o_rom.u_sha1, 16)
+                except ValueError:
+                    i_base10_value += 0
             else:
                 raise Exception('Invalid pu_type "%s"' % pu_type)
 
@@ -897,69 +761,37 @@ class RomSet(object):
             raise Exception('Invalid pu_type "%s"' % pu_type)
 
         u_hash = u_hash[-i_hash_length:]
-        u_hash = u_hash.ljust(i_hash_length, '0')
+        u_hash = u_hash.rjust(i_hash_length, '0')
 
         return u_hash
 
-    def set_id(self, s_mode):
+    def _get_size(self, pb_clean=False):
         """
-        Method to set the unique identifier string of the game.
+        Method to get the size of a romset taking into account all the files (dirty mode) or just relevant files (clean
+        mode).
 
-        It should be basically the crc of the first ROM of the game but in certain cases (disc based games dat from
-        redump.org or MAME emulator games) it's better to choose a different string like the crc of the first ROM that
-        actually contains information (the second one for redump games because the first one correspond to a .cue file
-        with just the structure of the disc) or simply the short name of the game (for example in MAME where games
-        has an 8 character identifier string that doesn't change through the time even some of the ROM data could do).
+        :param pb_clean: True for clean mode, False for dirty mode
         """
+        lo_relevant_roms = []
+        i_global_size = 0
 
-        # TODO: Make use of internal get_hash method
+        for o_rom in self.lo_roms:
+            # If discard is not activated, every ROM will be considered
+            if not pb_clean:
+                lo_relevant_roms.append(o_rom)
 
-        # Mode to obtain the CRC32 from the first ROM with real DATA. I need to check if ROM order change from DAT
-        # version to DAT version, that would make this method useless.
-        if s_mode == 'first_crc32':
-            try:
-                o_first_rom = self.lo_roms[0]
-                u_rom_extension = o_first_rom.u_name.rpartition('.')[2]
+            # In other case, ROMs are filtered based on the file extension
+            else:
+                if u'.' in o_rom.u_name:
+                    u_ext = o_rom.u_name.rpartition('.')[2].lower()
 
-                # 
-                if u_rom_extension.lower() != u'cue':
-                    self.u_id = o_first_rom.s_crc
-                else:
-                    try:
-                        self.u_id = self.lo_roms[1].u_crc
-                    except IndexError:
-                        self.u_id = ''
+                    if u_ext not in lu_IGNORE_EXTS:
+                        lo_relevant_roms.append(o_rom)
 
-            except IndexError:
-                self.u_id = ''
+        for o_rom in lo_relevant_roms:
+            i_global_size += o_rom.i_size
 
-        # Mode to obtain the id directly from the short name of the game
-        elif s_mode == 'short_name':
-            self.u_id = self.u_name
-
-        # Mode to sum all the crc32 of each ROM with dat (.cue files are discarded, maybe other file extensions in the
-        # future) and assign that number as the identification for the game.
-        #
-        # EXTRA INFO ABOUT .cue EXCLUSION:
-        # If the file name of the ROMs with real data change, the content of the cue is going to change, hence its
-        # CRC32. That leads to the unwanted situation where, just by changing the file names of the ROMs, the
-        # identification code of the game changes. To solve that, .cue files MUST NOT be considered in global CRC32
-        # calculation.
-        elif s_mode == 'sum_crc32':
-            s_accumulated_cbc32 = '00000000'
-
-            for o_rom in self.lo_roms:
-                u_rom_extension = o_rom.u_name.rpartition('.')[2]
-
-                if u_rom_extension.lower() != u'cue':
-                    s_accumulated_cbc32 = _sum_crc32(s_accumulated_cbc32, o_rom.u_crc32)
-
-            self.u_id = s_accumulated_cbc32
-
-        # Finally, the error handling code.
-        else:
-            s_output = 'Unknown identification method for a game object "%s".' % s_mode
-            raise Exception(s_output)
+        return i_global_size
 
     # Properties with a bit of code behind
     def _get_ccrc32(self):
@@ -980,12 +812,20 @@ class RomSet(object):
     def _get_dsha1(self):
         return self._get_hash(pu_type='sha1', pb_clean=False)
 
+    def _get_csize(self):
+        return self._get_size(pb_clean=True)
+
+    def _get_dsize(self):
+        return self._get_size(pb_clean=False)
+
     u_ccrc32 = property(fget=_get_ccrc32, fset=None)
     u_dcrc32 = property(fget=_get_dcrc32, fset=None)
     u_cmd5 = property(fget=_get_cmd5, fset=None)
     u_dmd5 = property(fget=_get_dmd5, fset=None)
     u_csha1 = property(fget=_get_csha1, fset=None)
     u_dsha1 = property(fget=_get_dsha1, fset=None)
+    i_csize = property(fget=_get_csize, fset=None)
+    i_dsize = property(fget=_get_dsize, fset=None)
 
 
 class _Rom:
@@ -1008,7 +848,7 @@ class _Rom:
         u_output = u''
         u_output += u'[_Rom]\n'
         u_output += u'   i_size: %i\n' % self.i_size
-        u_output += u'  u_crc32: %s\n' % self.u_crc32
+        u_output += u'  _u_crc32: %s\n' % self.u_crc32
         u_output += u'    u_md5: %s\n' % self.u_md5
         u_output += u'   u_name: %s\n' % self.u_name
         u_output += u'   u_sha1: %s\n' % self.u_sha1
@@ -1139,30 +979,30 @@ def _dat_horizontal_parse(s_line, s_start, s_end):
     return s_output
 
 
-def _sum_crc32(u_crc32_a, u_crc32_b):
-    """
-    Function to create the sum of two crc32 strings. Since the crc32 have to contain just 8 characters, when you sum two
-    crc32s big enough to generate a 9 character *crc32*, only the right 8 characters are returned. i.e. If you add
-    'ffffffff' + '00000001' = '100000000' So the output of this function would be '00000000'.
-
-    :param u_crc32_a: First crc32 to sum. i.e. '12345678'.
-
-    :param u_crc32_b: Second crc32 to sum. i.e. '1a2b3c4d'.
-
-    :return: A string with the truncated sum of the two crc32s. i.e. '2c5f92c5'.
-    """
-
-    #print '   %s + %s' % (s_crc32_a, s_crc32_b)
-
-    u_crc32_a = '0x%s' % u_crc32_a
-    u_crc32_b = '0x%s' % u_crc32_b
-
-    i_int_a = int(u_crc32_a, 16)
-    i_int_b = int(u_crc32_b, 16)
-
-    i_sum = i_int_a + i_int_b
-
-    h_crc32_sum = hex(i_sum)
-    u_crc32_sum = str(h_crc32_sum)[2:].rjust(8, '0')[-8:]
-
-    return u_crc32_sum
+#def _sum_crc32(u_crc32_a, u_crc32_b):
+#    """
+#    Function to create the sum of two crc32 strings. Since the crc32 have to contain just 8 characters, when you sum two
+#    crc32s big enough to generate a 9 character *crc32*, only the right 8 characters are returned. i.e. If you add
+#    'ffffffff' + '00000001' = '100000000' So the output of this function would be '00000000'.
+#
+#    :param u_crc32_a: First crc32 to sum. i.e. '12345678'.
+#
+#    :param u_crc32_b: Second crc32 to sum. i.e. '1a2b3c4d'.
+#
+#    :return: A string with the truncated sum of the two crc32s. i.e. '2c5f92c5'.
+#    """
+#
+#    #print '   %s + %s' % (s_crc32_a, s_crc32_b)
+#
+#    u_crc32_a = '0x%s' % u_crc32_a
+#    u_crc32_b = '0x%s' % u_crc32_b
+#
+#    i_int_a = int(u_crc32_a, 16)
+#    i_int_b = int(u_crc32_b, 16)
+#
+#    i_sum = i_int_a + i_int_b
+#
+#    h_crc32_sum = hex(i_sum)
+#    u_crc32_sum = str(h_crc32_sum)[2:].rjust(8, '0')[-8:]
+#
+#    return u_crc32_sum

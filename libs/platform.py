@@ -4,7 +4,7 @@ Library to define the platform object for storing information about systems (SNE
 
 
 class Platform:
-    def __init__(self, pu_alias=u'', pu_name=u'', pi_width=0, pi_height=0):
+    def __init__(self, pu_alias=u'', pu_name=u'', pi_width=0, pi_height=0, pi_order=0):
         # Arguments check
         if u'' in (pu_alias.strip(), pu_name.strip()):
             raise Exception('ERROR: Name and alias must contain printable characters (pu_alias, pu_name) = (%s, %s)'

@@ -57,7 +57,7 @@ class ParsedCsv:
                 i_column += 1
 
             u_row_output = u_row_output[:-2]
-            u_output += u'  %s\n' % u_row_output
+            u_output += u'  %s\n' % repr(u_row_output)
             u_output += u'  %s\n' % (u'-' * len(u_row_output))
 
         for lu_row in self.llu_rows:
@@ -84,7 +84,7 @@ class ParsedCsv:
         lu_clean_row = []
 
         for u_element in lu_row:
-            lu_clean_row.append(str(u_element).strip())
+            lu_clean_row.append(unicode(u_element).strip())
 
         self.llu_rows.append(lu_clean_row)
 
@@ -136,12 +136,25 @@ class ParsedCsv:
 
         :return: Nothing
         """
-        o_file = codecs.open(pu_file, 'r', 'utf8')
+        o_file = codecs.open(pu_file.encode('utf8'), 'r', 'utf8')
 
         i_data_line = 0
 
         for u_line in o_file:
-            if u_line[0] != pu_com:
+            # Getting comments
+            #-----------------
+            # This method of reading comments anywhere in the file and adding them to a comments section has a big
+            # caveat: If you read a csv file and then you save it to disk again, all the comments are going to be moved
+            # to the heading of the file. So, if the comments' position is relevant, reading and saving files can be a
+            # big issue. It's not at all for the purpose of HQ Tools.
+            if u_line[0] == pu_com:
+                u_line = u_line.lstrip(u'%s ' % pu_com)
+                u_line = u_line.rstrip(u'\n')
+                self.lu_comments.append(u_line)
+
+            # Getting data
+            #-------------
+            else:
                 i_data_line += 1
                 u_clean_line = _line_clean(u_line)
                 lu_line_fields = u_clean_line.split(pu_sep)

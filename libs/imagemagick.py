@@ -5,7 +5,6 @@ Library with ImageMagic transformations
 """
 
 import math
-import os
 import random
 
 import cmd
@@ -15,11 +14,11 @@ import geom
 
 # CONSTANTS
 #=======================================================================================================================
-u_CWD = os.path.dirname(os.path.abspath(__file__))
-u_MEDIA_ROOT = os.path.join(u_CWD, '..', 'media')
+o_CF_FP = files.FilePath(__file__.decode('utf8'))
+o_MEDIA_ROOT_FP = files.FilePath(o_CF_FP.u_root, u'..', u'media')
 
 tu_VALID_EXTS = ('bmp', 'gif', 'jpg', 'png')
-tu_CNV_MODES = ('mosaic', 'frame', 'hbars', 'magcover', 'vbars')
+tu_CNV_MODES = ('enclose', 'frame', 'hbars', 'magcover', 'mosaic', 'reduce', 'vbars')
 
 
 # CLASSES
@@ -77,14 +76,14 @@ class ImgConvCfgGenerator(object):
         if _is_valid_tuple(px_value, 2, int, float):
             self._tf_aspect = px_value
         elif px_value in cons.do_platforms:
-            self._tf_aspect = (cons.do_platforms[px_value].i_WIDTH, cons.do_platforms[px_value].i_HEIGHT)
+            self._tf_aspect = (float(cons.do_platforms[px_value].i_WIDTH), float(cons.do_platforms[px_value].i_HEIGHT))
         else:
             raise ValueError('Expecting a tuple of 2 integers or a string between %s' % ', '.join(cons.do_platforms))
 
     tf_aspect = property(_get_aspect, _set_aspect)
 
 
-class ImgConvertCfg():
+class ImgConvertCfg:
     """
     A configuration object for the cnv_img function.
     """
@@ -110,7 +109,7 @@ class ImgConvertCfg():
         return u_output.encode('utf8')
 
 
-class ImgKeyCoords():
+class ImgKeyCoords:
     """
     Class to store information about the transformation an image suffered.
     """
@@ -152,32 +151,35 @@ class ImgKeyCoords():
 
 # MAIN CONVERTER FUNCTIONS
 #=======================================================================================================================
-def cnv_img(pu_mode, po_src_file, po_dst_file, po_random_precfg):
+def cnv_img(pu_mode, pu_src_file, pu_dst_file, po_random_precfg):
     """
     Main convert function that will call different sub-convert functions depending on the value of pu_mode.
 
     :param pu_mode: Mode of image conversion. i.e. 'frame'
 
-    :param po_src_file: Source file for conversion. i.e. '/home/john/original_picture.jpg'
+    :param pu_src_file: Source file for conversion. i.e. '/home/john/original_picture.jpg'
 
-    :param po_dst_file: Destination file for conversion. i.e. '/home/john/final_picture.jpg'
+    :param pu_dst_file: Destination file for conversion. i.e. '/home/john/final_picture.jpg'
 
     :param po_random_precfg: Configuration object with main options for conversion (size, rotation, grab point...)
 
     :return:
     """
 
-    if not po_src_file.has_exts(*tu_VALID_EXTS):
-        raise ValueError('Not a valid src file extension (%s); valid ones are %s.' % (po_src_file.u_ext,
+    o_src_img_fp = files.FilePath(pu_src_file)
+    o_dst_img_fp = files.FilePath(pu_dst_file)
+
+    if not o_src_img_fp.has_exts(*tu_VALID_EXTS):
+        raise ValueError('Not a valid src file extension (%s); valid ones are %s.' % (o_src_img_fp.u_ext,
                                                                                       str(tu_VALID_EXTS)))
     else:
         o_cfg = po_random_precfg.randomize()
 
         # Extension change if it's forced
         if o_cfg.u_format:
-            po_dst_file.u_ext = po_random_precfg.u_format
+            o_dst_img_fp.u_ext = po_random_precfg.u_format
 
-        ti_src_img_size = _img_get_size(po_src_file.u_path)
+        ti_src_img_size = _img_get_size(o_src_img_fp.u_path)
 
         # Automatic aspect ratio (zero in any of the aspect ratios x,y) fixing
         if 0.0 in o_cfg.tf_aspect:
@@ -200,22 +202,122 @@ def cnv_img(pu_mode, po_src_file, po_dst_file, po_random_precfg):
             raise ValueError('pu_mode must be one of the these: %s' % ', '.join(tu_CNV_MODES))
 
         # Calling to sub-functions
-        elif pu_mode == 'mosaic':
-            o_transformation = _cnv_mosaic(po_src_file, po_dst_file, o_cfg)
+
+        elif pu_mode == 'enclose':
+            o_transformation = _cnv_enclose(o_src_img_fp, o_dst_img_fp, o_cfg)
         elif pu_mode == 'frame':
-            o_transformation = _cnv_frame(po_src_file, po_dst_file, o_cfg)
+            o_transformation = _cnv_frame(o_src_img_fp, o_dst_img_fp, o_cfg)
         elif pu_mode == 'hbars':
-            o_transformation = _cnv_hbars(po_src_file, po_dst_file, o_cfg)
+            o_transformation = _cnv_hbars(o_src_img_fp, o_dst_img_fp, o_cfg)
         elif pu_mode == 'magcover':
-            o_transformation = _cnv_magcover(po_src_file, po_dst_file, o_cfg)
+            o_transformation = _cnv_magcover(o_src_img_fp, o_dst_img_fp, o_cfg)
+        elif pu_mode == 'mosaic':
+            o_transformation = _cnv_mosaic(o_src_img_fp, o_dst_img_fp, o_cfg)
+        elif pu_mode == 'reduce':
+            o_transformation = _cnv_reduce(o_src_img_fp, o_dst_img_fp, o_cfg)
         elif pu_mode == 'vbars':
-            o_transformation = _cnv_vbars(po_src_file, po_dst_file, o_cfg)
+            o_transformation = _cnv_vbars(o_src_img_fp, o_dst_img_fp, o_cfg)
         else:
             o_transformation = None
 
-        o_transformation.o_path = po_dst_file
+        o_transformation.o_path = files.FilePath(pu_dst_file)
 
     return o_transformation
+
+
+def _cnv_enclose(po_src_file, po_dst_file, po_cfg):
+    """
+    Simple transformation that increases the canvas size of an image leaving the original image centered.
+    :param po_src_file:
+    :param po_dst_file:
+    :type po_cfg ImgConvertCfg:
+    :return:
+    """
+
+    # Variables preparation
+    #----------------------
+    ti_src_size = _img_get_size(po_src_file.u_path)
+    ti_delta_size = (po_cfg.ti_size[0] - ti_src_size[0], po_cfg.ti_size[1] - ti_src_size[1])
+
+    # Gravity
+    tf_grab = (po_cfg.tf_options[0], po_cfg.tf_options[1])
+
+    # Pixels to add or remove from each side
+    i_pix_up = int(tf_grab[1] * ti_delta_size[1])
+    i_pix_do = ti_delta_size[1] - i_pix_up
+    i_pix_le = int(tf_grab[0] * ti_delta_size[0])
+    i_pix_ri = ti_delta_size[0] - i_pix_le
+
+    #print
+    #print '  (X, Y): %s' % str(tf_grab)
+    #print '(dX, dY): %s' % str(ti_delta_size)
+    #print 'dX (l/r): (%i, %i)' % (i_pix_le, i_pix_ri)
+    #print 'dY (t/b): (%i, %i)' % (i_pix_up, i_pix_do)
+
+    # Command line build
+    #-------------------
+    u_cmd = u'convert '
+    u_cmd += u'"%s" ' % po_src_file.u_path
+
+    # Background color
+    u_cmd += u'-background "#%s" ' % po_cfg.u_color
+
+    # Increasing/Decreasing the image borders until reaching the desired canvas size
+
+    # Adding/Removing pixels from the top
+    if i_pix_up != 0:
+        u_cmd += u'-gravity North '
+        if i_pix_up >= 0:
+            u_cmd += u'-splice 0x%i ' % i_pix_up
+        else:
+            u_cmd += u'-chop 0x%i ' % -i_pix_up
+
+    # Adding/Removing pixels from the bottom
+    if i_pix_do != 0:
+        u_cmd += u'-gravity South '
+        if i_pix_do >= 0:
+            u_cmd += u'-splice 0x%i ' % i_pix_do
+        else:
+            u_cmd += u'-chop 0x%i ' % -i_pix_do
+
+    # Adding/Removing pixels from the left
+    if i_pix_le != 0:
+        u_cmd += u'-gravity West '
+        if i_pix_le >= 0:
+            u_cmd += u'-splice %ix0 ' % i_pix_le
+        else:
+            u_cmd += u'-chop %ix0 ' % -i_pix_le
+
+    # Adding/Removing pixels from the right
+    if i_pix_ri != 0:
+        u_cmd += u'-gravity East '
+        if i_pix_ri >= 0:
+            u_cmd += u'-splice %ix0 ' % i_pix_ri
+        else:
+            u_cmd += u'-chop %ix0 ' % -i_pix_ri
+
+    # Final output
+    u_cmd += u'"%s"' % po_dst_file.u_path
+
+    #print
+    #print u_cmd
+
+    # Command line execution
+    # -----------------------
+    du_output = cmd.execute(u_cmd)
+
+    if du_output['u_stderr']:
+        print du_output['u_stderr']
+
+    # Coordinates calculation after image manipulation
+    # -------------------------------------------------
+    o_img_transformation = ImgKeyCoords()
+    o_img_transformation.ti_size = _img_get_size(po_dst_file.u_path)
+
+    # Debug code to overlay image regions
+    # _draw_coordinates(po_dst_file, o_img_transformation)
+
+    return o_img_transformation
 
 
 def _cnv_frame(po_src_file, po_dst_file, po_cfg):
@@ -236,13 +338,12 @@ def _cnv_frame(po_src_file, po_dst_file, po_cfg):
 
     # Media preparation
     #------------------
-    o_img_light = files.FilePath(u_MEDIA_ROOT, 'frame', 'brightness.png')
+    o_img_light = files.FilePath(o_MEDIA_ROOT_FP.u_path, u'frame', u'brightness.png')
     o_img_light.absfile()
-    u_img_light = o_img_light.u_path.decode('utf8')
 
     # Variables preparation for imagemagick command
     #----------------------------------------------
-    ti_img_size = geom.max_rect_in(po_cfg.ti_size, po_cfg.tf_aspect)
+    ti_img_size = geom.max_rect_in(ptf_rec_out=po_cfg.ti_size, ptf_asp_in=po_cfg.tf_aspect)
     i_light_size = 2 * max(ti_img_size[0], ti_img_size[1])
     f_aspect_ratio = po_cfg.tf_aspect[0] / po_cfg.tf_aspect[1]
     f_gb_aspect_ratio = 160.0 / 144.0
@@ -292,23 +393,28 @@ def _cnv_frame(po_src_file, po_dst_file, po_cfg):
 
     if f_aspect_ratio == f_gb_aspect_ratio and i_colors <= 4 and b_grayscale:                # GameBoy (mono) color tint
         u_cmd += u'+level-colors "#0f380e,#9bbb0e" '
+    #else:
+    #    print po_src_file.u_path
+    #    print 'aspect: %f (!= %f)' % (f_aspect_ratio, f_gb_aspect_ratio)
+    #    print 'colors: %i' % i_colors
+    #    print '   b/w: %s' % b_grayscale
 
     u_cmd += u'-resize %ix%i! ' % (ti_img_size[0], ti_img_size[1])                           # Resizing
     u_cmd += u'-background transparent '                                                     # Transparent background
 
-    u_cmd += u'\( "%s" -resize %ix%i! -geometry %s \) -composite ' % (u_img_light,
+    u_cmd += u'\( "%s" -resize %ix%i! -geometry %s \) -composite ' % (o_img_light.u_path,
                                                                       i_light_size,
                                                                       i_light_size,
                                                                       u_foc_img_off)         # Light/shadow add
 
     u_cmd += u'-bordercolor \'%s\' -border %i ' % (u_frame_color, i_frame_thickness)         # Frame border
-    u_cmd += u'-rotate %f ' % po_cfg.f_rotation                                             # Rotation
+    u_cmd += u'-rotate %f ' % po_cfg.f_rotation                                              # Rotation
     u_cmd += u'\( -clone 0 -background black -shadow %ix%i+0+%i \) ' % (i_shadow_opac,
                                                                         i_shadow_blur,
                                                                         i_shadow_dist)       # Shadow creation
     u_cmd += u'-reverse -background none -layers merge +repage '                             # Shadow composition
 
-    u_cmd += u'-background "#%s" -flatten ' % po_cfg.u_color                               # Background color
+    u_cmd += u'-background "#%s" -flatten ' % po_cfg.u_color                                 # Background color
     u_cmd += u'"%s"' % po_dst_file.u_path                                                    # Output file
 
     # Command line execution
@@ -453,19 +559,19 @@ def _cnv_magcover(po_src_file, po_dst_file, po_cfg):
 
     # Media preparation
     #------------------
-    o_img_corner_fold = files.FilePath(u_MEDIA_ROOT, 'magcover', 'corner_fold.png')
+    o_img_corner_fold = files.FilePath(o_MEDIA_ROOT_FP.u_path, u'magcover', u'corner_fold.png')
     o_img_corner_fold.absfile()
     u_img_corner_fold = o_img_corner_fold.u_path.decode('utf8')
 
-    o_img_left_brightness = files.FilePath(u_MEDIA_ROOT, 'magcover', 'left_brightness.png')
+    o_img_left_brightness = files.FilePath(o_MEDIA_ROOT_FP.u_path, u'magcover', u'left_brightness.png')
     o_img_left_brightness.absfile()
     u_img_left_brightness = o_img_left_brightness.u_path.decode('utf8')
 
-    o_img_left_fold = files.FilePath(u_MEDIA_ROOT, 'magcover', 'left_fold_dark.png')
+    o_img_left_fold = files.FilePath(o_MEDIA_ROOT_FP.u_path, u'magcover', u'left_fold_dark.png')
     o_img_left_fold.absfile()
     u_img_left_fold = o_img_left_fold.u_path.decode('utf8')
 
-    o_img_stp = files.FilePath(u_MEDIA_ROOT, 'magcover', 'staple.png')
+    o_img_stp = files.FilePath(o_MEDIA_ROOT_FP.u_path, u'magcover', u'staple.png')
     o_img_stp.absfile()
     u_img_stp = o_img_stp.u_path.decode('utf8')
 
@@ -695,6 +801,58 @@ def _cnv_mosaic(po_src_file, po_dst_file, po_cfg):
     return o_img_transformation
 
 
+def _cnv_reduce(po_src_file, po_dst_file, po_cfg):
+    """
+    Simple function to resize an image while respecting it's original aspect ratio.
+    :param po_src_file:
+    :param po_dst_file:
+    :type po_cfg ImgConvertCfg:
+    :return:
+    """
+
+    # TODO: Think about something interesting to do with the options -o float,float
+
+    # Variables preparation for imagemagick command
+    # ----------------------------------------------
+    ti_img_src_size = _img_get_size(po_src_file.u_path)
+    ti_img_dst_size = geom.max_rect_in(ptf_rec_out=po_cfg.ti_size, ptf_asp_in=po_cfg.tf_aspect)
+
+    # Command line build
+    #-------------------
+    u_cmd = u'convert '
+    u_cmd += u'"%s" ' % po_src_file.u_path
+
+    # Background
+    u_cmd += u'-background "#%s" ' % po_cfg.u_color
+
+    # Resize
+    if ti_img_src_size[0] > ti_img_dst_size[0] and ti_img_src_size[1] > ti_img_dst_size[1]:
+        u_cmd += u'-resize %ix%i! ' % (ti_img_dst_size[0], ti_img_dst_size[1])
+
+    # Rotation
+    u_cmd += u'-rotate %f +repage ' % po_cfg.f_rotation
+
+    # Final output
+    u_cmd += u'"%s"' % po_dst_file.u_path
+
+    # Command line execution
+    #-----------------------
+    du_output = cmd.execute(u_cmd)
+
+    if du_output['u_stderr']:
+        print du_output['u_stderr']
+
+    # Coordinates calculation after image manipulation
+    #-------------------------------------------------
+    o_img_transformation = ImgKeyCoords()
+    o_img_transformation.ti_size = _img_get_size(po_dst_file.u_path)
+
+    # Debug code to overlay image regions
+    #_draw_coordinates(po_dst_file, o_img_transformation)
+
+    return o_img_transformation
+
+
 def _cnv_vbars(po_src_file, po_dst_file, po_cfg):
     """
     Image conversion that pixelates the image using vertical bars.
@@ -894,48 +1052,23 @@ def _img_is_grayscale(pu_image):
     :return: True if the image is greyscale.
     """
 
-    u_cmd = u'convert "%s" -colorspace HSL -verbose info:' % pu_image
+    # Reference for getting the amount of color in the image:
+    #
+    # http://www.imagemagick.org/discourse-server/viewtopic.php?t=19580#p133865
+    #
+    # The output will be one single float value 0.0-1.0 (as a string, of course) like "0.273162"
+
+    u_cmd = u'convert "%s" -colorspace HSL -channel g -separate +channel -format "%%[fx:mean]" info:' % pu_image
     du_output = cmd.execute(u_cmd)
 
-    # The output of the above command gives information about RGB channels but actually they are HSL. According to
-    # http://www.imagemagick.org/discourse-server/viewtopic.php?t=19580, we're interested in the "green" (saturation)
-    # channel. The information to parse is:
-    #
-    #     ...
-    #     Green:
-    #       min: 0 (0)
-    #       max: 0 (0)
-    #       mean: 0 (0)
-    #       standard deviation: 0 (0)
-    #       kurtosis: 0
-    #       skewness: 0
-    #     Blue:
-    #     ...
-    #
-    # If max is 0, the image is 100% greyscale.
-    i_start = du_output['u_stdout'].find('Green:') + len('Green:')
-    i_end = du_output['u_stdout'].find('Blue:')
-    u_green_info = du_output['u_stdout'][i_start:i_end]
+    f_color_ratio = float(du_output['u_stdout'])
 
-    lu_green_info = u_green_info.splitlines()
-
-    b_info_found = False
-
-    for u_line in lu_green_info:
-        if 'max:' in u_line:
-            b_info_found = True
-            i_max = int(u_line.split()[1])
-
-    if b_info_found:
-        if i_max == 0:
-            b_grayscale = True
-        else:
-            b_grayscale = False
-
-        return b_grayscale
-
+    if f_color_ratio == 0.0:
+        b_grayscale = True
     else:
-        raise IOError('Te file provided doesn\'t seem to be a valid image for imagemagick: %s' % pu_image)
+        b_grayscale = False
+
+    return b_grayscale
 
 
 def _img_get_size(pu_image):
