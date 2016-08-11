@@ -257,7 +257,7 @@ def _cnv_enclose(po_src_file, po_dst_file, po_cfg):
     # Command line build
     #-------------------
     u_cmd = u'convert '
-    u_cmd += u'"%s" ' % po_src_file.u_path
+    u_cmd += u'\'%s\' ' % po_src_file.u_path
 
     # Background color
     u_cmd += u'-background "#%s" ' % po_cfg.u_color
@@ -297,10 +297,7 @@ def _cnv_enclose(po_src_file, po_dst_file, po_cfg):
             u_cmd += u'-chop %ix0 ' % -i_pix_ri
 
     # Final output
-    u_cmd += u'"%s"' % po_dst_file.u_path
-
-    #print
-    #print u_cmd
+    u_cmd += u'\'%s\'' % po_dst_file.u_path
 
     # Command line execution
     # -----------------------
@@ -389,7 +386,7 @@ def _cnv_frame(po_src_file, po_dst_file, po_cfg):
     # Command line build
     #-------------------
     u_cmd = u'convert '
-    u_cmd += u'"%s" ' % po_src_file.u_path                                                   # Source file
+    u_cmd += u'\'%s\' ' % po_src_file.u_path                                                   # Source file
 
     if f_aspect_ratio == f_gb_aspect_ratio and i_colors <= 4 and b_grayscale:                # GameBoy (mono) color tint
         u_cmd += u'+level-colors "#0f380e,#9bbb0e" '
@@ -402,10 +399,10 @@ def _cnv_frame(po_src_file, po_dst_file, po_cfg):
     u_cmd += u'-resize %ix%i! ' % (ti_img_size[0], ti_img_size[1])                           # Resizing
     u_cmd += u'-background transparent '                                                     # Transparent background
 
-    u_cmd += u'\( "%s" -resize %ix%i! -geometry %s \) -composite ' % (o_img_light.u_path,
-                                                                      i_light_size,
-                                                                      i_light_size,
-                                                                      u_foc_img_off)         # Light/shadow add
+    u_cmd += u'\( \'%s\' -resize %ix%i! -geometry %s \) -composite ' % (o_img_light.u_path,
+                                                                        i_light_size,
+                                                                        i_light_size,
+                                                                        u_foc_img_off)         # Light/shadow add
 
     u_cmd += u'-bordercolor \'%s\' -border %i ' % (u_frame_color, i_frame_thickness)         # Frame border
     u_cmd += u'-rotate %f ' % po_cfg.f_rotation                                              # Rotation
@@ -415,7 +412,7 @@ def _cnv_frame(po_src_file, po_dst_file, po_cfg):
     u_cmd += u'-reverse -background none -layers merge +repage '                             # Shadow composition
 
     u_cmd += u'-background "#%s" -flatten ' % po_cfg.u_color                                 # Background color
-    u_cmd += u'"%s"' % po_dst_file.u_path                                                    # Output file
+    u_cmd += u'\'%s\'' % po_dst_file.u_path                                                    # Output file
 
     # Command line execution
     #-----------------------
@@ -507,7 +504,7 @@ def _cnv_hbars(po_src_file, po_dst_file, po_cfg):
     # Command line build
     #-------------------
     u_cmd = u'convert '
-    u_cmd += u'"%s" ' % po_src_file.u_path
+    u_cmd += u'\'%s\' ' % po_src_file.u_path
 
     # Pixelation
     u_cmd += u'-colors %i ' % i_colors
@@ -529,7 +526,7 @@ def _cnv_hbars(po_src_file, po_dst_file, po_cfg):
     u_cmd += u'-crop %ix%i+0+0 +repage ' % (ti_pic_size_final[0], ti_pic_size_final[1])
 
     # Final output
-    u_cmd += u'"%s"' % po_dst_file.u_path
+    u_cmd += u'\'%s\'' % po_dst_file.u_path
 
     # Command line execution
     #-----------------------
@@ -623,7 +620,7 @@ def _cnv_magcover(po_src_file, po_dst_file, po_cfg):
     # Command line build
     #-------------------
     u_cmd = u'convert '
-    u_cmd += u'"%s" ' % po_src_file.u_path                                                 # Source file
+    u_cmd += u'\'%s\' ' % po_src_file.u_path                                                 # Source file
     u_cmd += u'-resize %ix%i! ' % (ti_cvr_size_final[0], ti_cvr_size_final[1])             # Resizing
     u_cmd += u'-background transparent '                                                   # Transparent background
 
@@ -639,14 +636,14 @@ def _cnv_magcover(po_src_file, po_dst_file, po_cfg):
 
     # Left reflection
     # TODO: Make reflection intensity (and shape?) change with rotation angle.
-    u_cmd += u'\( "%s" ' % u_img_left_brightness                                           # Left brightness
+    u_cmd += u'\( \'%s\' ' % u_img_left_brightness                                           # Left brightness
     u_cmd += u'-resize %ix%i! ' % (ti_cvr_size_final[0], ti_cvr_size_final[1])             # Light add
     u_cmd += u'-channel alpha -fx "%s * a" ' % f_left_bright_mult                          # Alpha channel modification
     u_cmd += u'\) -composite '
 
     # Bottom right corner fold reflection
     u_cmd += u'-gravity SouthEast '
-    u_cmd += u'\( "%s" ' % u_img_corner_fold
+    u_cmd += u'\( \'%s\' ' % u_img_corner_fold
     u_cmd += u'-resize %ix%i! ' % (i_corner_fold_size_final, i_corner_fold_size_final)
     u_cmd += u'-channel alpha -fx "%s * a" ' % f_bottom_right_bright_mult
     u_cmd += u'\) -composite '
@@ -655,7 +652,7 @@ def _cnv_magcover(po_src_file, po_dst_file, po_cfg):
     # Staples
     u_cmd += u'-gravity east -extent +%i+0 -gravity northwest ' % i_stp_x
     for i_staple_y in li_staples_y:
-        u_cmd += u'\( "%s" ' % u_img_stp
+        u_cmd += u'\( \'%s\' ' % u_img_stp
         u_cmd += u'-resize x%i ' % _i_stp_height
         u_cmd += u'-geometry +0+%i ' % i_staple_y
         u_cmd += u'\) -compose over -composite '
@@ -678,7 +675,7 @@ def _cnv_magcover(po_src_file, po_dst_file, po_cfg):
     u_cmd += u'-reverse -background none -layers merge +repage '                         # Shadow composition
 
     u_cmd += u'-background "#%s" -flatten ' % po_cfg.u_color                             # Background color
-    u_cmd += u'"%s"' % po_dst_file.u_path                                                # Output file
+    u_cmd += u'\'%s\'' % po_dst_file.u_path                                                # Output file
 
     # Command line execution
     #-----------------------
@@ -757,7 +754,7 @@ def _cnv_mosaic(po_src_file, po_dst_file, po_cfg):
     # Command line build
     #-------------------
     u_cmd = u'convert '
-    u_cmd += u'"%s" ' % po_src_file.u_path
+    u_cmd += u'\'%s\' ' % po_src_file.u_path
 
     # Pixelation
     u_cmd += u'-colors %i ' % i_colors
@@ -781,7 +778,7 @@ def _cnv_mosaic(po_src_file, po_dst_file, po_cfg):
     u_cmd += u'-crop %ix%i+0+0 +repage ' % (ti_pic_size_final[0], ti_pic_size_final[1])
 
     # Final output
-    u_cmd += u'"%s"' % po_dst_file.u_path
+    u_cmd += u'\'%s\'' % po_dst_file.u_path
 
     # Command line execution
     #-----------------------
@@ -820,7 +817,7 @@ def _cnv_reduce(po_src_file, po_dst_file, po_cfg):
     # Command line build
     #-------------------
     u_cmd = u'convert '
-    u_cmd += u'"%s" ' % po_src_file.u_path
+    u_cmd += u'\'%s\' ' % po_src_file.u_path
 
     # Background
     u_cmd += u'-background "#%s" ' % po_cfg.u_color
@@ -833,7 +830,7 @@ def _cnv_reduce(po_src_file, po_dst_file, po_cfg):
     u_cmd += u'-rotate %f +repage ' % po_cfg.f_rotation
 
     # Final output
-    u_cmd += u'"%s"' % po_dst_file.u_path
+    u_cmd += u'\'%s\'' % po_dst_file.u_path
 
     # Command line execution
     #-----------------------
@@ -893,7 +890,7 @@ def _cnv_vbars(po_src_file, po_dst_file, po_cfg):
     # Command line build
     #-------------------
     u_cmd = u'convert '
-    u_cmd += u'"%s" ' % po_src_file.u_path
+    u_cmd += u'\'%s\' ' % po_src_file.u_path
 
     # Pixelation
     u_cmd += u'-colors %i ' % i_colors
@@ -917,7 +914,7 @@ def _cnv_vbars(po_src_file, po_dst_file, po_cfg):
     u_cmd += u'-crop %ix%i+0+0 +repage ' % (ti_pic_size_final[0], ti_pic_size_final[1])
 
     # Final output
-    u_cmd += u'"%s"' % po_dst_file.u_path
+    u_cmd += u'\'%s\'' % po_dst_file.u_path
 
     # Command line execution
     #-----------------------
@@ -993,7 +990,7 @@ def _draw_coordinates(o_img_file, o_img_transform):
 
     # Imagemagick command for sectors overlaying
     u_cmd = u'convert '
-    u_cmd += u'%s ' % o_img_file.u_path
+    u_cmd += u'\'%s\' ' % o_img_file.u_path
 
     u_cmd += u'-stroke lime -fill "#ff000080" '
     u_cmd += u'-draw "polygon %s %s %s %s" ' % (u_tl, u_t, u_c, u_l)
@@ -1007,7 +1004,7 @@ def _draw_coordinates(o_img_file, o_img_transform):
     u_cmd += u'-stroke lime -fill "#ff00ff80" '
     u_cmd += u'-draw "polygon %s %s %s %s" ' % (u_c, u_r, u_br, u_b)
 
-    u_cmd += u'%s' % o_img_file.u_path
+    u_cmd += u'\'%s\'' % o_img_file.u_path
 
     cmd.execute(u_cmd)
 
@@ -1038,7 +1035,7 @@ def _img_count_colors(pu_image):
     # command below don't check the actual colors used but the color depth of the image. This program MUST obtain the
     # number of colors actually used in the image.
 
-    u_cmd = u'identify -format %%k "%s"' % pu_image
+    u_cmd = u'identify -format %%k \'%s\'' % pu_image
     du_output = cmd.execute(u_cmd)
     i_colors = int(du_output['u_stdout'])
 
@@ -1058,7 +1055,7 @@ def _img_is_grayscale(pu_image):
     #
     # The output will be one single float value 0.0-1.0 (as a string, of course) like "0.273162"
 
-    u_cmd = u'convert "%s" -colorspace HSL -channel g -separate +channel -format "%%[fx:mean]" info:' % pu_image
+    u_cmd = u'convert \'%s\' -colorspace HSL -channel g -separate +channel -format "%%[fx:mean]" info:' % pu_image
     du_output = cmd.execute(u_cmd)
 
     f_color_ratio = float(du_output['u_stdout'])
@@ -1078,7 +1075,7 @@ def _img_get_size(pu_image):
     :return: A tuple of integers with width and height. i.e. (640, 480)
     """
 
-    u_cmd = u'identify -format %%G "%s"' % pu_image
+    u_cmd = u'identify -format %%G \'%s\'' % pu_image
     du_output = cmd.execute(u_cmd)
 
     # The standard output of the command above is widthxheight. i.e. 640x906. So, it's easy to parse.

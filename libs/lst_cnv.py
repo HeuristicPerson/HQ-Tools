@@ -105,7 +105,7 @@ def lconvert(pu_src_fmt=None, pu_dst_fmt=None, pu_src_file=None, pu_dst_file=Non
     u_meta_file_root = u''
     if u'Game Boy' in po_dat.u_name:
         u_meta_file_root = u'gb'
-    elif u'Megadrive' in po_dat.u_name:
+    elif u'Genesis' in po_dat.u_name:
         u_meta_file_root = u'megadrive'
     elif u'32X' in po_dat.u_name:
         u_meta_file_root = u'32x'
@@ -197,17 +197,20 @@ def lconvert(pu_src_fmt=None, pu_dst_fmt=None, pu_src_file=None, pu_dst_file=Non
 
     return {'lo_romsets_found': lo_romsets_found_in_db, 'lo_romsets_missed': lo_romsets_missed_in_db}
 
-# READ/WRITE FUNCTIONS FOR DIFFERENT FORMATS
-#=======================================================================================================================
-# There are two different functions for each favourites list format:
-#
-#     1. A "xxx_read" list that reads a favourite list in the format xxx (wahcade or MALA for example) and outputs a dat
-#        container object from hqlib with the full game objects found.
-#
-#     2. A "xxx_write" list that receives a game container object from hqlib and generates a favourites list in the xxx
-#        format.
 
-
+#======================================================================================================================#
+# READ/WRITE FUNCTIONS FOR DIFFERENT FORMATS                                                                           #
+#======================================================================================================================#
+#                                                                                                                      #
+# There are two different functions for each favourites list format:                                                   #
+#                                                                                                                      #
+#     1. A "xxx_read" list that reads a favourite list in the format xxx (wahcade or MALA for example) and outputs a   #
+#        dat container object from hqlib with the full game objects found.                                             #
+#                                                                                                                      #
+#     2. A "xxx_write" list that receives a game container object from hqlib and generates a favourites list in the    #
+#        xxx format.                                                                                                   #
+#                                                                                                                      #
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 def lst_read(po_file_fp=None, pu_format=None):
     """
     Function to get the name of the romsets present in a list.
