@@ -62,6 +62,21 @@ class RomSetMatch:
     u_crc32 = property(fget=_get_crc32, fset=_set_crc32)
 
 
+class ListConvertOutput(object):
+    def __init__(self):
+        self.lu_cnv_romsets = []
+        self.lu_unk_romsets = []
+
+    def _get_num_converted_games(self):
+        return len(self.lu_cnv_romsets)
+
+    def _get_num_unknown_games(self):
+        return len(self.lu_unk_romsets)
+
+    i_cnv_romsets = property(fget=_get_num_converted_games)
+    i_unk_romsets = property(fget=_get_num_unknown_games)
+
+
 # FUNCTIONS
 #=======================================================================================================================
 def lconvert(pu_src_fmt=None, pu_dst_fmt=None, pu_src_file=None, pu_dst_file=None, po_dat=None, pb_print=False,
@@ -195,7 +210,15 @@ def lconvert(pu_src_fmt=None, pu_dst_fmt=None, pu_src_file=None, pu_dst_file=Non
                    po_dst_fp=o_dst_fp,
                    pb_full=b_full_log)
 
-    return {'lo_romsets_found': lo_romsets_found_in_db, 'lo_romsets_missed': lo_romsets_missed_in_db}
+    # OUTPUT
+    #-------
+    o_output = ListConvertOutput()
+    for o_romset in lo_romsets_found_in_db:
+        o_output.lu_cnv_romsets.append(o_romset.u_name)
+    for o_romset in lo_romsets_missed_in_db:
+        o_output.lu_unk_romsets.append(o_romset.u_name)
+
+    return o_output
 
 
 #======================================================================================================================#
@@ -248,11 +271,13 @@ def lst_write(po_dat=None, pdo_romsets=None, pu_file=u'', pu_format=u''):
     :return: Nothing?
     """
 
+    po_file_fp = files.FilePath(pu_file)
+
     if pu_format == 'wahcade':
-        _wahcade_write(pdo_romsets=pdo_romsets, pu_file=pu_file)
+        _wahcade_write(pdo_romsets=pdo_romsets, po_file_fp=po_file_fp)
 
     elif pu_format == 'hqtools':
-        _hqtools_write(po_dat=po_dat, pdo_romsets=pdo_romsets, pu_file=pu_file)
+        _hqtools_write(po_dat=po_dat, pdo_romsets=pdo_romsets, po_file_fp=po_file_fp)
 
     else:
         raise Exception('Unknown format "%s"' % pu_format)
@@ -293,7 +318,7 @@ def _hqtools_read(po_file_fp):
     return lo_romsets_found
 
 
-def _hqtools_write(po_dat=None, pdo_romsets=None, pu_file=''):
+def _hqtools_write(po_dat=None, pdo_romsets=None, po_file_fp=None):
     """
     Function to write a list of RomSets in hqtools format (HQ list, the internal format of this program).
 
@@ -329,12 +354,12 @@ def _hqtools_write(po_dat=None, pdo_romsets=None, pu_file=''):
 
         o_csv.append_row(lu_data_line)
 
-    o_csv.save_to_disk(pu_file=pu_file, pu_sep=u'\t', pu_com=u'#')
+    o_csv.save_to_disk(pu_file=po_file_fp.u_path, pu_sep=u'\t', pu_com=u'#')
 
 
 # WAHCADE
 #=======================================================================================================================
-def _wahcade_read(pu_file=u''):
+def _wahcade_read(po_file_fp=None):
     """
     Function to read a list of games from a WahCade list file and return a list of games found in a database.
 
@@ -368,7 +393,7 @@ def _wahcade_read(pu_file=u''):
 
     # Getting the list of ROMs in the file
     #-------------------------------------
-    o_file = codecs.open(pu_file, 'r', 'utf8')
+    o_file = codecs.open(po_file_fp.u_path, 'r', 'utf8')
 
     while True:
         lu_lines = files.read_nlines(o_file, 13)
@@ -385,7 +410,7 @@ def _wahcade_read(pu_file=u''):
     return lo_romsets_found
 
 
-def _wahcade_write(pdo_romsets=None, pu_file=u''):
+def _wahcade_write(pdo_romsets=None, po_file_fp=None):
     """
     Function to write a list of romsets to wahcade list format. See _wahcade_read function for details about wahcade
     file format.
@@ -398,7 +423,7 @@ def _wahcade_write(pdo_romsets=None, pu_file=u''):
     :return:
     """
 
-    o_file = codecs.open(pu_file, 'w', 'utf8')
+    o_file = codecs.open(po_file_fp.u_path, 'w', 'utf8')
 
     for u_romset_name in lists.title_sort(pdo_romsets.keys()):
         # First we get the romset object

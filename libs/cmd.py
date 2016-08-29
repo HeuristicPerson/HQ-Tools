@@ -23,3 +23,18 @@ def execute(pu_command):
     u_stderr = u_stderr.decode('utf8')
 
     return {'u_stdout': u_stdout, 'u_stderr': u_stderr}
+
+
+def sanitize_path(u_path):
+    """
+    Function to sanitize a path, or part of a path.
+    :type u_path: unicode
+
+    :return: The sanitized path or part of a path.
+    """
+    du_replacements = {u'$': u'\$'}
+
+    for u_key, u_value in du_replacements.iteritems():
+        u_path = u_path.replace(u_key, u_value)
+
+    return u_path

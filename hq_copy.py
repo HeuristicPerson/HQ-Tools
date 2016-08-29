@@ -16,6 +16,7 @@ import sys
 
 from libs import cons
 from libs import files
+from libs import roms
 from libs import strings
 from libs import time
 
@@ -28,6 +29,37 @@ class SingleMode:
     def __init__(self, pu_desc=u'', ps_field=''):
         self.u_desc = pu_desc
         self.u_field = ps_field
+
+
+class Args:
+    def __init__(self):
+        self.b_simulation = True
+        self.u_dat_file = u''
+        self.u_src_path = u''
+        self.u_dst_path = u''
+        self.u_src_format = u''
+        self.u_dst_format = u''
+        self.u_regex_pattern = u''
+        self.i_regex_group = None
+
+
+class HqCopyOut(object):
+    """
+    Class to contain the output of HQ Copy function.
+    """
+    def __init__(self):
+        self.lu_renamed = []
+        self.lu_unknown = []
+        self.o_time = None
+
+    def get_num_ren_files(self):
+        return len(self.lu_renamed)
+
+    def get_num_unk_files(self):
+        return len(self.lu_unknown)
+
+    i_renamed = property(fget=get_num_ren_files)
+    i_unknown = property(fget=get_num_unk_files)
 
 
 # CONSTANTS
@@ -44,7 +76,7 @@ do_valid_single_modes = {'cC': SingleMode(pu_desc=u'clean CRC32', ps_field='u_cc
                          'dC': SingleMode(pu_desc=u'dirty CRC32', ps_field='u_dcrc32'),
                          'dM': SingleMode(pu_desc=u'dirty MD5', ps_field='u_dmd5'),
                          'dS': SingleMode(pu_desc=u'dirty SHA1', ps_field='u_dsha1'),
-                         'T': SingleMode(pu_desc=u'Title', ps_field='u_desc')}
+                         'T': SingleMode(pu_desc=u'Title', ps_field='u_name')}
 lu_valid_single_modes = sorted(do_valid_single_modes.keys(), key=lambda u_element: u_element.lower())
 #lu_valid_single_modes.sort()
 
@@ -172,14 +204,27 @@ def _get_cmd_options():
     if i_errors:
         sys.exit()
 
-    return {'b_simulation': b_simulation,
-            'u_dat_file': u_dat_file,
-            'u_src_path': u_src_path,
-            'u_dst_path': u_dst_path,
-            'u_src_format': u_src_format,
-            'u_dst_format': u_dst_format,
-            'u_regex_pattern': u_regex,
-            'i_regex_group': i_regex_group}
+    # Preparing the output result
+    o_output_args = Args()
+    o_output_args.b_simulation = b_simulation
+    o_output_args.u_dat_file = u_dat_file
+    o_output_args.u_src_path = u_src_path
+    o_output_args.u_dst_path = u_dst_path
+    o_output_args.u_src_format = u_src_format
+    o_output_args.u_dst_format = u_dst_format
+    o_output_args.u_regex_pattern = u_regex
+    o_output_args.i_regex_group = i_regex_group
+
+    return o_output_args
+
+    #return {'b_simulation': b_simulation,
+    #        'u_dat_file': u_dat_file,
+    #        'u_src_path': u_src_path,
+    #        'u_dst_path': u_dst_path,
+    #        'u_src_format': u_src_format,
+    #        'u_dst_format': u_dst_format,
+    #        'u_regex_pattern': u_regex,
+    #        'i_regex_group': i_regex_group}
 
 
 def _regex_catcher(u_text, u_pattern=None, i_group=None):
@@ -206,8 +251,8 @@ def _regex_catcher(u_text, u_pattern=None, i_group=None):
 
 # MAIN FUNCTION
 #=======================================================================================================================
-def hq_copy(po_dat=None, pu_src_path='', pu_dst_dir='', pu_src_fmt='', pu_dst_fmt='', pb_sim=False,
-            pi_print_mode=0, u_regex_pattern=None, i_regex_group=None, pb_del_src=False):
+def hq_copy(po_dat=None, pu_src_path=u'', pu_dst_dir=u'', pu_src_fmt=u'', pu_dst_fmt=u'', pb_sim=False,
+            pi_print_mode=0, pu_regex_pattern=None, pi_regex_group=None, pb_del_src=False):
     """
     Renaming function for files and directories. Valid formats are crc32, md5, sha1 and real hq_title.
 
@@ -224,7 +269,7 @@ def hq_copy(po_dat=None, pu_src_path='', pu_dst_dir='', pu_src_fmt='', pu_dst_fm
 
     The output of the function is... # TODO
 
-    :param pu_dat: Dat file to use for renaming. i.e. '/home/charles/dat_files/snes.dat'
+    :param po_dat: Dat file to use for renaming. i.e. '/home/charles/dat_files/snes.dat'
 
     :param pu_src_path: Source file (or directory) to be renamed. i.e. '/home/ann/my_files/' or '/home/metroid (eur).jpg'
 
@@ -296,10 +341,10 @@ def hq_copy(po_dat=None, pu_src_path='', pu_dst_dir='', pu_src_fmt='', pu_dst_fm
 
         # If the regex mode is not active, the full name of the file is used to find a game in the database. But with
         # regex matching, just part of the filename is used.
-        if None in (u_regex_pattern, i_regex_group):
+        if None in (pu_regex_pattern, pi_regex_group):
             u_caught_name = o_src_fp.u_name
         else:
-            u_caught_name = _regex_catcher(o_src_fp.u_name, u_regex_pattern, i_regex_group)
+            u_caught_name = _regex_catcher(o_src_fp.u_name, pu_regex_pattern, pi_regex_group)
 
         try:
             o_romset = po_dat.get_romsets_by_field(do_valid_single_modes[pu_src_fmt].u_field, True, u_caught_name)[0]
@@ -308,7 +353,7 @@ def hq_copy(po_dat=None, pu_src_path='', pu_dst_dir='', pu_src_fmt='', pu_dst_fm
 
         if o_romset:
             i_files_recognized += 1
-            lu_ren_files.append(o_src_fp.u_file)
+            lu_ren_files.append(o_src_fp.u_path)
 
             u_output_name = getattr(o_romset, do_valid_single_modes[pu_dst_fmt].u_field)
 
@@ -328,7 +373,7 @@ def hq_copy(po_dat=None, pu_src_path='', pu_dst_dir='', pu_src_fmt='', pu_dst_fm
                 u_copy_text = cons.u_OK_TEXT
 
         else:
-            lu_unk_files.append(o_src_fp.u_file)
+            lu_unk_files.append(o_src_fp.u_path)
             u_dst_file_name = u'-- UNKNOWN --'
             u_copy_text = cons.u_ER_TEXT
 
@@ -357,13 +402,20 @@ def hq_copy(po_dat=None, pu_src_path='', pu_dst_dir='', pu_src_fmt='', pu_dst_fm
 
     o_end = time.now()
 
-    return {'i_total_files': i_files_total,
-            'i_recog_files': i_files_recognized,
-            'i_unk_files': i_files_total - i_files_recognized,
-            'i_copied_files': i_files_renamed,
-            'o_time': o_end - o_start,
-            'lu_ren_files': lu_ren_files,
-            'lu_unk_files': lu_unk_files}
+    o_output = HqCopyOut()
+    o_output.lu_renamed = lu_ren_files
+    o_output.lu_unknown = lu_unk_files
+    o_output.o_time = o_end - o_start
+
+    return o_output
+
+    #return {'i_total_files': i_files_total,
+    #        'i_recog_files': i_files_recognized,
+    #        'i_unk_files': i_files_total - i_files_recognized,
+    #        'i_copied_files': i_files_renamed,
+    #        'o_time': o_end - o_start,
+    #        'lu_ren_files': lu_ren_files,
+    #        'lu_unk_files': lu_unk_files}
 
 
 # EXECUTION AS COMMAND LINE PROGRAM
@@ -371,14 +423,16 @@ def hq_copy(po_dat=None, pu_src_path='', pu_dst_dir='', pu_src_fmt='', pu_dst_fm
 if __name__ == '__main__':
     print strings.hq_title(u_PROG_NAME, u_PROG_VER)
 
-    dx_args = _get_cmd_options()
-    dx_rename_output = hq_copy(po_dat=dx_args['u_dat_file'],
-                               pu_src_path=dx_args['u_src_path'], pu_dst_dir=dx_args['u_dst_path'],
-                               pu_src_fmt=dx_args['u_src_format'], pu_dst_fmt=dx_args['u_dst_format'],
-                               pb_sim=dx_args['b_simulation'],
-                               u_regex_pattern=dx_args['u_regex_pattern'],
-                               i_regex_group=dx_args['i_regex_group'],
-                               i_print_mode=2)
+    o_args = _get_cmd_options()
+    o_dat = libs.roms.RomSetContainer(o_args.u_dat_file)
+
+    dx_rename_output = hq_copy(po_dat=o_dat,
+                               pu_src_path=o_args.u_src_path, pu_dst_dir=o_args.u_dst_path,
+                               pu_src_fmt=o_args.u_src_format, pu_dst_fmt=o_args.u_dst_format,
+                               pb_sim=o_args.b_simulation,
+                               pu_regex_pattern=o_args.u_regex_pattern,
+                               pi_regex_group=o_args.i_regex_group,
+                               pi_print_mode=2)
 
     # Some basic stats are printed to screen
     f_renamed_percent = 100.0 * dx_rename_output['i_recog_files'] / dx_rename_output['i_total_files']
